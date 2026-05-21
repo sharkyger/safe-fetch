@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
-from sanitizer import sanitize_html
+from sanitizer import sanitize
 
 FETCH_TIMEOUT_SECONDS = 15
 MAX_FETCH_BYTES = 5 * 1024 * 1024  # 5 MB raw cap before sanitizer truncates to 20 KB
@@ -69,7 +69,7 @@ def main(argv: list[str]) -> int:
     # Decode permissively — sanitizer needs str. Errors-replace so a
     # mis-encoded page can't crash the container.
     text = raw.decode("utf-8", errors="replace")
-    result = sanitize_html(text, source_url=url)
+    result = sanitize(text, url=url)
     sys.stdout.write(result.content)
     return 0
 
