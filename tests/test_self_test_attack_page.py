@@ -1,17 +1,15 @@
 """Self-test attack-page integration check for Layer 2 sanitizer.
 
-The fixture ``tests/fixtures/safe_fetch/attack-page.html`` combines
-every Layer-2 injection vector (invisible Unicode, hidden CSS,
-HTML comments, instruction-shaped prose, homoglyph hosts, encoded
-payloads, fake LLM delimiters, script tags, noscript blocks) into a
-single page that looks like normal documentation.
+The fixture ``tests/fixtures/attack-page.html`` combines every Layer-2
+injection vector (invisible Unicode, hidden CSS, HTML comments,
+instruction-shaped prose, homoglyph hosts, encoded payloads, fake LLM
+delimiters, script tags, noscript blocks) into a single page that
+looks like normal documentation.
 
 A passing test proves the full sanitizer pipeline strips every vector
-in one pass — not just each in isolation. This is the regression net
-for the pillar: if a future change weakens any single layer, the
-combined page will leak instruction text and the test will fail.
-
-See ``docs/roadmaps/injection-gate-pillar.md`` Part 5 MVP item 13.
+in one pass — not just each in isolation. This is the regression net:
+if a future change weakens any single layer, the combined page will
+leak instruction text and the test will fail.
 """
 
 from __future__ import annotations
@@ -20,11 +18,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from safe_fetch import sanitizer  # noqa: E402
 
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "safe_fetch" / "attack-page.html"
+FIXTURE = REPO_ROOT / "tests" / "fixtures" / "attack-page.html"
 
 
 # Instruction phrases that MUST NOT appear in sanitizer output for v1.

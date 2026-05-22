@@ -8,18 +8,15 @@ License: MIT
 Copyright (c) 2025 Tim Stark
 
 They are used here as golden-file regression fixtures for the Python
-port of the same sanitizer (`scripts/safe_fetch/sanitizer.py`). See
-`docs/roadmaps/injection-gate-pillar.md` Part 3.5 for the adoption
-rationale.
+port of the same sanitizer (`src/safe_fetch/sanitizer.py`).
 
 ## Refresh from upstream
 
 ```
 git clone https://github.com/timstarkk/mcp-safe-fetch.git /tmp/mcp-safe-fetch-ref
 git -C /tmp/mcp-safe-fetch-ref checkout e82724c9b9535aff6c2cc102aa17abd16b726b96
-cp /tmp/mcp-safe-fetch-ref/test/fixtures/*.html tests/fixtures/safe_fetch/
+cp /tmp/mcp-safe-fetch-ref/test/fixtures/*.html tests/fixtures/
 ```
 
-Bumping the pinned commit needs a fresh source audit per
-`feedback_subagent_output_treat_as_untrusted.md` and an updated entry
-in scope doc Part 9 ("Additional references").
+Bumping the pinned commit requires a fresh source audit of the
+upstream sanitizer before adoption.

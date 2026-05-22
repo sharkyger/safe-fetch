@@ -17,9 +17,6 @@ Roughly 5% of typical WebFetch network latency; safe to leave on.
 Stat keys use snake_case (zero_width_chars, hidden_elements, ...);
 upstream uses camelCase. The behaviour is equivalent module-by-module
 but key names diverge — convert when diffing upstream vs. this port.
-
-See docs/roadmaps/injection-gate-pillar.md Part 3.5 (adoption note)
-and Part 5 MVP item 2 for the port contract.
 """
 
 from __future__ import annotations

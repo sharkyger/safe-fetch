@@ -8,11 +8,10 @@ contract under test is purely:
   2. Docker pre-flight: if ``docker info`` fails, exit 2 with a loud
      install hint instead of trying to run the container.
   3. The exact subprocess argv built for ``docker run`` — every
-     hardening flag in scope doc Part 2 must be present.
+     hardening flag in ``DOCKER_FLAGS`` must be present.
 
-The actual container behavior is verified manually via the smoke test
-in the plan file. See ``docs/roadmaps/injection-gate-pillar.md``
-Part 5 MVP item 1 and Part 8 Session-B steps 2-3.
+The actual container behavior is verified via ``test_live_smoke.py``,
+which requires Docker and the built ``safe-fetch:latest`` image.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ from pathlib import Path
 from unittest import mock
 
 REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from safe_fetch import cli  # noqa: E402
 

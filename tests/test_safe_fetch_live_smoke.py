@@ -21,11 +21,7 @@ slip through too. Clean-input contract verification is the canary.
 
 Skipped automatically when Docker is not available or the
 ``safe-fetch:latest`` image hasn't been built. Run
-``docker/safe-fetch/build.sh`` first to make this test go green.
-
-See ``docs/roadmaps/injection-gate-pillar.md`` Part 5 MVP item 1
-(Docker layer) + the standing pillar test corpus plan
-(``project_injection_gate_test_corpus``).
+``docker/build.sh`` first to make this test go green.
 """
 
 from __future__ import annotations
@@ -42,8 +38,8 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
-FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "safe_fetch"
-SAFE_FETCH_SHIM = REPO_ROOT / "scripts" / "safe-fetch"
+FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
+SRC_DIR = REPO_ROOT / "src"
 IMAGE_NAME = "safe-fetch:latest"
 
 
@@ -75,7 +71,7 @@ pytestmark = [
     pytest.mark.skipif(not _docker_available(), reason="docker not available"),
     pytest.mark.skipif(
         _docker_available() and not _image_built(),
-        reason=f"{IMAGE_NAME} not built — run docker/safe-fetch/build.sh",
+        reason=f"{IMAGE_NAME} not built — run docker/build.sh",
     ),
 ]
 
@@ -96,8 +92,8 @@ class _SilentHandler(http.server.SimpleHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def benign_server():
-    """Spin up an http.server on a free port serving the safe_fetch
-    fixtures dir; tear it down when the module finishes.
+    """Spin up an http.server on a free port serving the fixtures dir;
+    tear it down when the module finishes.
 
     Not safe under pytest-xdist (module-scope chdir would mutate the
     worker's cwd globally). The repo doesn't currently use xdist; if
@@ -132,12 +128,15 @@ def benign_server():
 
 
 def _run_safe_fetch(url: str) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(SRC_DIR)
     return subprocess.run(
-        [str(SAFE_FETCH_SHIM), url],
+        ["python3", "-m", "safe_fetch", url],
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
+        env=env,
     )
 
 

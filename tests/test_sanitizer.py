@@ -3,10 +3,6 @@
 Ported from timstarkk/mcp-safe-fetch test suite (MIT, (c) 2025 Tim Stark)
 at commit e82724c9b9535aff6c2cc102aa17abd16b726b96.
 Upstream: https://github.com/timstarkk/mcp-safe-fetch/tree/main/test
-
-Until the port lands, every test here is expected to FAIL with
-NotImplementedError (TDD RED phase). See
-docs/roadmaps/injection-gate-pillar.md Part 8 Session A.
 """
 
 import base64
@@ -14,7 +10,7 @@ from pathlib import Path
 
 from safe_fetch.sanitizer import sanitize, sanitize_text, sanitize_unicode
 
-FIXTURES = Path(__file__).parent / "fixtures" / "safe_fetch"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def fixture(name: str) -> str:

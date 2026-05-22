@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "safe-fetch"
+version = "1.0.0"
+description = "Docker-isolated URL fetcher + Layer-2 prompt-injection sanitizer for LLM agents"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Sharky", email = "51028592+sharkyger@users.noreply.github.com" },
+]
+keywords = ["prompt-injection", "llm-security", "claude-code", "ai-security", "sanitizer"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sharkyger/safe-fetch"
+Issues = "https://github.com/sharkyger/safe-fetch/issues"
+Source = "https://github.com/sharkyger/safe-fetch"
+"Companion: claude-code hooks" = "https://github.com/sharkyger/claude-code-prompt-injection-gate"
+
+[project.scripts]
+safe-fetch = "safe_fetch.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+safe_fetch = ["data/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "S", "B", "UP", "SIM", "PTH"]
+ignore = [
+    "T201",   # CLI uses print
+    "S603",   # subprocess args are reviewed
+    "S607",   # partial paths intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]   # assert is fine in tests
+
+[tool.ruff.format]
+quote-style = "double"

@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check
+      - name: Test
+        run: pytest -v
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build safe-fetch image
+        run: docker build -t safe-fetch:latest -f docker/Dockerfile .
+      - name: Smoke check the entrypoint
+        run: |
+          # Image should at minimum print its usage on bad invocation
+          docker run --rm safe-fetch:latest 2>&1 | grep -q "Usage" || (echo "image entrypoint smoke failed"; exit 1)

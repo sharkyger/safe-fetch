@@ -7,8 +7,8 @@ and no curl in the image), runs the Layer-2 sanitizer, and writes the
 
 This file lives inside the container only. Host-side validation
 (scheme, control chars, allowlist routing) happens in
-``scripts/safe_fetch/cli.py``; what arrives here is already trusted to
-be a syntactically-valid http/https URL. Defense-in-depth: we still
+``src/safe_fetch/cli.py``; what arrives here is already trusted to be
+a syntactically-valid http/https URL. Defense-in-depth: we still
 verify the scheme here so a future regression in the host code can't
 silently smuggle ``file://`` into the container.
 """
@@ -24,7 +24,7 @@ from sanitizer import sanitize
 
 FETCH_TIMEOUT_SECONDS = 15
 MAX_FETCH_BYTES = 5 * 1024 * 1024  # 5 MB raw cap before sanitizer truncates to 20 KB
-USER_AGENT = "safe-fetch/0.1 (+https://github.com/sharkyger/claude-code-prompt-injection-gate)"
+USER_AGENT = "safe-fetch/1.0 (+https://github.com/sharkyger/safe-fetch)"
 
 
 def _die(msg: str, code: int = 2) -> None:

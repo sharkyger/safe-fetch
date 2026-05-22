@@ -1,10 +1,10 @@
 """Host-side CLI for safe-fetch.
 
 Pre-flight checks Docker, validates the URL, and invokes the
-``safe-fetch:latest`` image with the locked-down ``docker run`` flags
-documented in ``docs/roadmaps/injection-gate-pillar.md`` Part 2.
+``safe-fetch:latest`` image with the locked-down ``docker run`` flag
+set defined in ``DOCKER_FLAGS`` below.
 
-Every flag in ``DOCKER_FLAGS`` is asserted by ``tests/test_safe_fetch_cli.py``.
+Every flag in ``DOCKER_FLAGS`` is asserted by ``tests/test_cli.py``.
 A missing or relaxed flag is a security regression — change the test
 deliberately if you intend to alter the contract.
 """
