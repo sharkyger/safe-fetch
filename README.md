@@ -22,7 +22,7 @@ fetched content (envelope-breakout defense).
 
 ## How to use it
 
-There are two surfaces: the CLI directly, and Claude Code.
+Two surfaces: the CLI directly, and Claude Code.
 
 **Directly from your shell:**
 
@@ -30,20 +30,13 @@ There are two surfaces: the CLI directly, and Claude Code.
 safe-fetch https://example.com
 ```
 
-Output is the sanitized page wrapped in an untrusted-content envelope
-(`<UNTRUSTED-WEB url="...">...</UNTRUSTED-WEB>`). Pipe it to a file,
-to your own agent, or to anything else that consumes URL text.
+Output is the sanitized page wrapped in an untrusted-content envelope.
+Pipe it to a file, to your own agent, or to anything else that
+consumes URL text.
 
-**From inside Claude Code, IMPORTANT:** after installing the hooks
-(`safe-fetch --install-claude-hooks`, see [Quick start](#quick-start)
-below), Claude Code will still default to its built-in `WebFetch` tool
-for "fetch this URL"-style requests. WebFetch is faster (no Docker
-spin-up), but it does NOT route through `safe-fetch` and does NOT
-invoke Docker isolation. The hooks warn you when WebFetch hits a
-non-allowlisted host, but they don't auto-reroute it.
-
-**To actually invoke Docker-isolated fetching, name the tool in your
-prompt:**
+**From inside Claude Code:** after installing the hooks (see
+[Quick start](#quick-start) below), name `safe-fetch` explicitly in
+your prompt to invoke the full Docker-isolated pipeline:
 
 > Please use `safe-fetch` to fetch https://example.com/article and
 > summarize what's there.
@@ -53,14 +46,8 @@ Or use the explicit Bash form:
 > Please run `safe-fetch https://example.com/article` via Bash and
 > show me the output.
 
-If you just say "fetch this URL," Claude will pick the path it
-considers easiest — usually WebFetch. The allowlist warning still
-fires, but you don't get the Docker-isolated fetch + Layer-2 sanitizer
-pass. **Name `safe-fetch` explicitly when you want the full
-isolation.**
-
-See [How to verify it's actually running](#how-to-verify-its-actually-running)
-below for the full trust-gradient table and proof patterns.
+Naming the tool guarantees the request flows through the container
+isolation + sanitizer chain.
 
 ## Quick start
 
@@ -84,55 +71,13 @@ rule snippet into `~/.claude/` idempotently. See
 
 ## How to verify it's actually running
 
-Two things confuse first-time users:
-
-1. **`docker ps` looks empty** — `safe-fetch` uses `--rm`, so the
-   container vanishes the moment the fetch completes (usually
-   2-5 seconds total). By the time you switch terminals, it's gone.
-
-2. **Asking your agent to "fetch a URL" might not fire Docker** —
-   because there are multiple paths to "fetch", and only one of them
-   uses `safe-fetch`. See the trust gradient below.
-
-### The real receipt: the envelope
-
-You don't need to catch Docker live. The output itself proves the
-container ran:
-
-```bash
-safe-fetch https://example.com
-```
-
-If the output starts with `<UNTRUSTED-WEB url="...">` and ends with
-the matching close tag, the container fired, the sanitizer ran, and
-your agent will treat the body as data. **Nothing else produces that
-envelope** — not WebFetch, not raw curl, not any other path.
-
-### The trust gradient (what does and doesn't fire Docker)
-
-`safe-fetch --install-claude-hooks` configures a layered defense.
-Docker isolation is reserved for content from non-allowlisted
-origins, not used for every fetch (overhead would be ~3s per call,
-unworkable for first-party docs):
-
-| Path | What happens | Docker fires? |
-|---|---|---|
-| Claude Code's `WebFetch` tool | Warning if non-allowlisted, otherwise silent | **No** — by design, WebFetch never reroutes to Docker |
-| Bash `curl`/`wget` to allowlisted host (Anthropic, your domains) | Passes silently | No |
-| Bash `curl`/`wget` to non-allowlisted host | **BLOCKED**; agent told to use `safe-fetch` instead | Only after the agent re-issues as `safe-fetch <url>` |
-| Explicit `safe-fetch <url>` (CLI or via Bash tool) | Always Docker | **Yes**, every time |
-
-So to *demonstrate* Docker firing, ask your agent to use `safe-fetch`
-explicitly, not "fetch this URL." Example prompt:
-
-> Please run `safe-fetch https://en.wikipedia.org/wiki/Prompt_injection`
-> via the Bash tool and show me the output.
-
-### Catching containers live (if you really want to)
+The simplest receipt: a successful `safe-fetch` returns the sanitized
+page bracketed by untrusted-content envelope tags. If you see the
+envelope, the container fired and the sanitizer ran.
 
 For visual confirmation in a side terminal, the Docker events stream
-is more reliable than `docker ps` because it captures every start/stop
-with a timestamp, even after the container is gone:
+is more reliable than `docker ps` (containers exit with `--rm` faster
+than you can switch windows):
 
 ```bash
 docker events --filter type=container --filter image=safe-fetch:latest \
@@ -146,17 +91,16 @@ safe-fetch https://example.com
 ```
 
 You'll see a `start` event followed by a `die` event a few seconds
-later. After the fact, `docker ps -a --filter ancestor=safe-fetch:latest`
-also shows recently-exited containers with their lifetimes.
+later. `docker ps -a --filter ancestor=safe-fetch:latest` also shows
+recently-exited containers with their lifetimes.
 
-### Multi-subagent + concurrent Docker
+### Multi-subagent + concurrent isolation
 
 Each subagent invoking `safe-fetch` gets its own ephemeral container.
-N subagents fetching in parallel → N concurrent containers, each with
-its own `--cap-drop=ALL`, `--read-only`, `--network=bridge` isolation.
-Verify with the events stream above: two parallel safe-fetch invocations
-produce two `start` events within milliseconds of each other and both
-`die` events come AFTER both `start`s.
+N concurrent safe-fetch calls produce N concurrent containers, each
+fully isolated. Confirm via the events stream — parallel invocations
+emit `start` events within milliseconds of each other and both `die`
+events come AFTER both `start`s.
 
 ## Requirements
 
@@ -244,14 +188,15 @@ companion into `~/.claude/`:
   single-use markers authorizing writes to protected destinations
 - **CLAUDE.md snippet** documenting the Layer-4 system rule
 
-After install, every WebFetch URL is checked against the allowlist
-(first-party Anthropic + your domains pass; everything else gets a
-warning). Raw `curl`/`wget` against non-allowlisted hosts is
-auto-rewritten to `safe-fetch`. Subagent results are wrapped in an
-untrusted-subagent envelope. Writes to `CLAUDE.md`,
-`.claude/settings.json`, `.claude/hooks/*.sh`, skill files, or
-project-memory files are gated behind a single-use marker that only
+After install, fetches and shell commands run through an allowlist-
+aware gating layer. Subagent results carry an untrusted-source marker.
+Writes to your operator-controlled files (CLAUDE.md, settings, hooks,
+skills, project memory) are gated behind a single-use marker that only
 the operator slash commands can produce.
+
+For the full architecture and threat model, see the
+[claude-code-prompt-injection-gate](https://github.com/sharkyger/claude-code-prompt-injection-gate)
+companion repo.
 
 ### Uninstall
 
