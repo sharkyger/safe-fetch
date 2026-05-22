@@ -20,33 +20,27 @@ calling agent treats the body as data, not instructions. The wrap
 also neuters any literal envelope-tag sequence appearing inside the
 fetched content (envelope-breakout defense).
 
-## Quick start
+## How to use it
+
+There are two surfaces: the CLI directly, and Claude Code.
+
+**Directly from your shell:**
 
 ```bash
-brew install sharkyger/tap/safe-fetch
 safe-fetch https://example.com
 ```
 
-That prints the sanitized page to stdout, wrapped in the untrusted-
-content envelope.
+Output is the sanitized page wrapped in an untrusted-content envelope
+(`<UNTRUSTED-WEB url="...">...</UNTRUSTED-WEB>`). Pipe it to a file,
+to your own agent, or to anything else that consumes URL text.
 
-For Claude Code users — install the gating hooks and slash commands
-that route every fetch through `safe-fetch`:
-
-```bash
-safe-fetch --install-claude-hooks
-```
-
-This writes hooks, five operator slash commands, and a CLAUDE.md
-rule snippet into `~/.claude/` idempotently. See
-[Claude Code companion](#claude-code-companion) below.
-
-### Important: tell Claude Code to USE safe-fetch
-
-After install, Claude Code will still default to its built-in `WebFetch`
-tool for "fetch this URL"-style requests — that's faster (no Docker
-spin-up) but doesn't isolate the content. The hooks warn you when
-WebFetch hits a non-allowlisted host, but they don't auto-reroute it.
+**From inside Claude Code, IMPORTANT:** after installing the hooks
+(`safe-fetch --install-claude-hooks`, see [Quick start](#quick-start)
+below), Claude Code will still default to its built-in `WebFetch` tool
+for "fetch this URL"-style requests. WebFetch is faster (no Docker
+spin-up), but it does NOT route through `safe-fetch` and does NOT
+invoke Docker isolation. The hooks warn you when WebFetch hits a
+non-allowlisted host, but they don't auto-reroute it.
 
 **To actually invoke Docker-isolated fetching, name the tool in your
 prompt:**
@@ -60,12 +54,33 @@ Or use the explicit Bash form:
 > show me the output.
 
 If you just say "fetch this URL," Claude will pick the path it
-considers easiest — usually WebFetch. The container won't fire. The
-allowlist warning + sanitizer-wrapped subagent envelopes still apply,
-but you don't get the Docker-isolated fetch + Layer-2 sanitizer pass.
+considers easiest — usually WebFetch. The allowlist warning still
+fires, but you don't get the Docker-isolated fetch + Layer-2 sanitizer
+pass. **Name `safe-fetch` explicitly when you want the full
+isolation.**
 
 See [How to verify it's actually running](#how-to-verify-its-actually-running)
 below for the full trust-gradient table and proof patterns.
+
+## Quick start
+
+```bash
+brew install sharkyger/tap/safe-fetch
+safe-fetch https://example.com
+```
+
+That prints the sanitized page to stdout, wrapped in the untrusted-
+content envelope.
+
+For Claude Code users — install the gating hooks and slash commands:
+
+```bash
+safe-fetch --install-claude-hooks
+```
+
+This writes hooks, five operator slash commands, and a CLAUDE.md
+rule snippet into `~/.claude/` idempotently. See
+[Claude Code companion](#claude-code-companion) below.
 
 ## How to verify it's actually running
 
