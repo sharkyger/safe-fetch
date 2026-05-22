@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "safe-fetch"
-version = "1.0.0"
+version = "1.0.1"
 description = "Docker-isolated URL fetcher + Layer-2 prompt-injection sanitizer for LLM agents"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -121,8 +121,18 @@ fi
 # Trailing boundary: space, end-of-string, or another shell separator —
 # closes the `curl;rm` gap where a separator butts directly against
 # the command name with no whitespace.
+#
+# The optional `rtk[[:space:]]+(proxy[[:space:]]+)?` prefix catches the
+# rtk (Rust Token Killer) wrapper pattern. rtk's Claude Code hook
+# rewrites Bash calls to `rtk proxy <cmd>` for token savings; without
+# this allowance, every rtk-wrapped curl/wget would slip past the
+# fetch gate because curl is then preceded by a plain space, not a
+# separator. The prefix match preserves the `man curl` / `git
+# curl-config` false-positive shield — those are preceded by a non-rtk
+# token, so the rtk group doesn't match and the bare-curl path
+# requires a separator that they don't satisfy.
 if ! echo "$COMMAND" \
-     | grep -qE '(^|[|&;`(])[[:space:]]*(curl|wget)([[:space:]|&;]|$)'; then
+     | grep -qE '(^|[|&;`(])[[:space:]]*(rtk[[:space:]]+(proxy[[:space:]]+)?)?(curl|wget)([[:space:]|&;]|$)'; then
   exit 0
 fi
 
