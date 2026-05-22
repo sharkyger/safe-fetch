@@ -456,7 +456,14 @@ def _empty_text_stats() -> dict[str, int]:
 
 
 def sanitize_unicode(text: str) -> SanitizeResult:
-    """Strip invisible Unicode and apply NFKC normalization. No wrap."""
+    """Strip invisible Unicode and apply NFKC normalization. No wrap.
+
+    Returns the cleaned text WITHOUT the untrusted-content envelope and
+    WITHOUT the inner-tag escape pass. If you pass this output to a
+    context that would treat it as trusted, you have re-opened the
+    envelope-breakout vector. Use ``sanitize`` or ``sanitize_text`` for
+    any flow that returns content to an agent.
+    """
     input_size = len(text.encode("utf-8"))
     content, stats = _strip_unicode(text)
     return SanitizeResult(
@@ -482,7 +489,7 @@ def sanitize_text(text: str, url: str = "unknown://source") -> SanitizeResult:
         content=wrapped,
         input_size=input_size,
         output_size=len(wrapped.encode("utf-8")),
-        stats={**_empty_html_stats(), **u_stats, **e_stats, **x_stats, **d_stats, **b_stats},
+        stats={**_empty_html_stats(), **_empty_text_stats(), **u_stats, **e_stats, **x_stats, **d_stats, **b_stats},
     )
 
 
