@@ -374,6 +374,47 @@ def _strip_delimiters(text: str) -> tuple[str, dict[str, int]]:
     return text, {"llm_delimiters": count, "custom_patterns": 0}
 
 
+# ── envelope-breakout defense ───────────────────────────────────────
+#
+# After every other strip pass, neuter any literal <UNTRUSTED-*> or
+# </UNTRUSTED-*> sequence in the content. Without this pass, an
+# attacker who controls a fetched page can close our envelope mid-body
+# and re-open it around forged "trusted" content the parent agent
+# would then treat as outside-envelope instructions.
+#
+# This is the standard escape pattern (cf. HTML's `<script>` neutering
+# in user-generated content). Once inner sequences are escaped, the
+# outer wrap is monotonic — the attacker cannot break out regardless
+# of whether the tag name itself is public knowledge. See
+# https://en.wikipedia.org/wiki/Kerckhoffs%27s_principle for the
+# design rationale.
+#
+# Case-insensitive, attribute-tolerant. Matches:
+#   <UNTRUSTED-WEB ...>, </UNTRUSTED-WEB>, <UNTRUSTED-SUBAGENT name="x">,
+#   </UNTRUSTED-FILE>, <untrusted-anything> (any future variant).
+
+_UNTRUSTED_TAG_RE = re.compile(
+    r"</?\s*UNTRUSTED-[A-Z0-9_-]+(?:\s[^>]*)?\s*/?>",
+    re.IGNORECASE,
+)
+
+_BREAKOUT_REDACTION = "[REDACTED-FAKE-DELIMITER]"
+
+
+def _escape_untrusted_tags(text: str) -> tuple[str, dict[str, int]]:
+    """Neuter literal UNTRUSTED-* tag sequences inside content.
+
+    Returns the escaped text + a stat dict (count of replaced
+    occurrences) so a breakout attempt shows up in the SanitizeResult
+    stats and a future test or telemetry hook can flag spikes.
+    """
+    matches = _UNTRUSTED_TAG_RE.findall(text)
+    if not matches:
+        return text, {"breakout_attempts": 0}
+    escaped = _UNTRUSTED_TAG_RE.sub(_BREAKOUT_REDACTION, text)
+    return escaped, {"breakout_attempts": len(matches)}
+
+
 # ── pipeline ─────────────────────────────────────────────────────────
 
 
@@ -410,6 +451,7 @@ def _empty_text_stats() -> dict[str, int]:
         "exfiltration_urls": 0,
         "llm_delimiters": 0,
         "custom_patterns": 0,
+        "breakout_attempts": 0,
     }
 
 
@@ -426,20 +468,21 @@ def sanitize_unicode(text: str) -> SanitizeResult:
 
 
 def sanitize_text(text: str, url: str = "unknown://source") -> SanitizeResult:
-    """Sanitize plain text (no HTML parse) and wrap in ``<UNTRUSTED-WEB>``."""
+    """Sanitize plain text (no HTML parse) and wrap in the untrusted envelope."""
     input_size = len(text.encode("utf-8"))
 
     content, u_stats = _strip_unicode(text)
     content, e_stats = _strip_encoded(content)
     content, x_stats = _strip_exfiltration(content)
     content, d_stats = _strip_delimiters(content)
+    content, b_stats = _escape_untrusted_tags(content)
 
     wrapped = _wrap_untrusted(_apply_length_cap(content), url)
     return SanitizeResult(
         content=wrapped,
         input_size=input_size,
         output_size=len(wrapped.encode("utf-8")),
-        stats={**_empty_html_stats(), **u_stats, **e_stats, **x_stats, **d_stats},
+        stats={**_empty_html_stats(), **u_stats, **e_stats, **x_stats, **d_stats, **b_stats},
     )
 
 
@@ -465,11 +508,12 @@ def sanitize(html: str, url: str = "unknown://source") -> SanitizeResult:
     content, e_stats = _strip_encoded(content)
     content, x_stats = _strip_exfiltration(content)
     content, d_stats = _strip_delimiters(content)
+    content, b_stats = _escape_untrusted_tags(content)
 
     wrapped = _wrap_untrusted(_apply_length_cap(content), url)
     return SanitizeResult(
         content=wrapped,
         input_size=input_size,
         output_size=len(wrapped.encode("utf-8")),
-        stats={**h_stats, **u_stats, **e_stats, **x_stats, **d_stats},
+        stats={**h_stats, **u_stats, **e_stats, **x_stats, **d_stats, **b_stats},
     )

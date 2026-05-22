@@ -15,8 +15,10 @@ sanitizer that knows about them.
 
 `safe-fetch <url>` fetches the page inside a hardened Docker
 container, runs a sanitizer that strips known injection vectors, and
-returns the result wrapped in `<UNTRUSTED-WEB url="...">...</UNTRUSTED-WEB>`
-tags so the calling agent treats the body as data, not instructions.
+returns the result wrapped in an untrusted-content envelope tag so the
+calling agent treats the body as data, not instructions. The wrap
+also neuters any literal envelope-tag sequence appearing inside the
+fetched content (envelope-breakout defense).
 
 ## Quick start
 
@@ -25,8 +27,8 @@ brew install sharkyger/tap/safe-fetch
 safe-fetch https://example.com
 ```
 
-That prints the sanitized page to stdout, wrapped in the
-`<UNTRUSTED-WEB>` envelope.
+That prints the sanitized page to stdout, wrapped in the untrusted-
+content envelope.
 
 For Claude Code users — install the gating hooks and slash commands
 that route every fetch through `safe-fetch`:
@@ -99,8 +101,9 @@ safe-fetch <url>     │
                      │     ├── strip hidden CSS prose
                      │     ├── decode base64 payloads (flag, don't execute)
                      │     ├── strip fake LLM delimiters
+                     │     ├── escape inner envelope-tag sequences
                      │     └── cap output at 20 KB
-                     │   wrap in <UNTRUSTED-WEB url="..."> envelope
+                     │   wrap in untrusted-content envelope
                      │   write to stdout
                      │
    sanitized stdout <┘
@@ -127,8 +130,8 @@ companion into `~/.claude/`:
 After install, every WebFetch URL is checked against the allowlist
 (first-party Anthropic + your domains pass; everything else gets a
 warning). Raw `curl`/`wget` against non-allowlisted hosts is
-auto-rewritten to `safe-fetch`. Subagent results are wrapped in
-`<UNTRUSTED-SUBAGENT>` tags. Writes to `CLAUDE.md`,
+auto-rewritten to `safe-fetch`. Subagent results are wrapped in an
+untrusted-subagent envelope. Writes to `CLAUDE.md`,
 `.claude/settings.json`, `.claude/hooks/*.sh`, skill files, or
 project-memory files are gated behind a single-use marker that only
 the operator slash commands can produce.
