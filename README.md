@@ -41,6 +41,108 @@ This writes hooks, five operator slash commands, and a CLAUDE.md
 rule snippet into `~/.claude/` idempotently. See
 [Claude Code companion](#claude-code-companion) below.
 
+### Important: tell Claude Code to USE safe-fetch
+
+After install, Claude Code will still default to its built-in `WebFetch`
+tool for "fetch this URL"-style requests — that's faster (no Docker
+spin-up) but doesn't isolate the content. The hooks warn you when
+WebFetch hits a non-allowlisted host, but they don't auto-reroute it.
+
+**To actually invoke Docker-isolated fetching, name the tool in your
+prompt:**
+
+> Please use `safe-fetch` to fetch https://example.com/article and
+> summarize what's there.
+
+Or use the explicit Bash form:
+
+> Please run `safe-fetch https://example.com/article` via Bash and
+> show me the output.
+
+If you just say "fetch this URL," Claude will pick the path it
+considers easiest — usually WebFetch. The container won't fire. The
+allowlist warning + sanitizer-wrapped subagent envelopes still apply,
+but you don't get the Docker-isolated fetch + Layer-2 sanitizer pass.
+
+See [How to verify it's actually running](#how-to-verify-its-actually-running)
+below for the full trust-gradient table and proof patterns.
+
+## How to verify it's actually running
+
+Two things confuse first-time users:
+
+1. **`docker ps` looks empty** — `safe-fetch` uses `--rm`, so the
+   container vanishes the moment the fetch completes (usually
+   2-5 seconds total). By the time you switch terminals, it's gone.
+
+2. **Asking your agent to "fetch a URL" might not fire Docker** —
+   because there are multiple paths to "fetch", and only one of them
+   uses `safe-fetch`. See the trust gradient below.
+
+### The real receipt: the envelope
+
+You don't need to catch Docker live. The output itself proves the
+container ran:
+
+```bash
+safe-fetch https://example.com
+```
+
+If the output starts with `<UNTRUSTED-WEB url="...">` and ends with
+the matching close tag, the container fired, the sanitizer ran, and
+your agent will treat the body as data. **Nothing else produces that
+envelope** — not WebFetch, not raw curl, not any other path.
+
+### The trust gradient (what does and doesn't fire Docker)
+
+`safe-fetch --install-claude-hooks` configures a layered defense.
+Docker isolation is reserved for content from non-allowlisted
+origins, not used for every fetch (overhead would be ~3s per call,
+unworkable for first-party docs):
+
+| Path | What happens | Docker fires? |
+|---|---|---|
+| Claude Code's `WebFetch` tool | Warning if non-allowlisted, otherwise silent | **No** — by design, WebFetch never reroutes to Docker |
+| Bash `curl`/`wget` to allowlisted host (Anthropic, your domains) | Passes silently | No |
+| Bash `curl`/`wget` to non-allowlisted host | **BLOCKED**; agent told to use `safe-fetch` instead | Only after the agent re-issues as `safe-fetch <url>` |
+| Explicit `safe-fetch <url>` (CLI or via Bash tool) | Always Docker | **Yes**, every time |
+
+So to *demonstrate* Docker firing, ask your agent to use `safe-fetch`
+explicitly, not "fetch this URL." Example prompt:
+
+> Please run `safe-fetch https://en.wikipedia.org/wiki/Prompt_injection`
+> via the Bash tool and show me the output.
+
+### Catching containers live (if you really want to)
+
+For visual confirmation in a side terminal, the Docker events stream
+is more reliable than `docker ps` because it captures every start/stop
+with a timestamp, even after the container is gone:
+
+```bash
+docker events --filter type=container --filter image=safe-fetch:latest \
+  --format '{{.Time}} {{.Action}} {{.ID}}'
+```
+
+Then in another terminal:
+
+```bash
+safe-fetch https://example.com
+```
+
+You'll see a `start` event followed by a `die` event a few seconds
+later. After the fact, `docker ps -a --filter ancestor=safe-fetch:latest`
+also shows recently-exited containers with their lifetimes.
+
+### Multi-subagent + concurrent Docker
+
+Each subagent invoking `safe-fetch` gets its own ephemeral container.
+N subagents fetching in parallel → N concurrent containers, each with
+its own `--cap-drop=ALL`, `--read-only`, `--network=bridge` isolation.
+Verify with the events stream above: two parallel safe-fetch invocations
+produce two `start` events within milliseconds of each other and both
+`die` events come AFTER both `start`s.
+
 ## Requirements
 
 - **Docker** — required. The container is the isolation layer. If
