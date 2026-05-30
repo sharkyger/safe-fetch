@@ -15,13 +15,16 @@ concurrency:
 
 permissions:
   contents: read
-  # security-events: write — required for CodeQL to upload SARIF results
-  # to the repo's Security tab.
-  security-events: write
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # security-events: write — scoped to this job only so only the
+      # CodeQL analyze step can upload SARIF results to the repo's
+      # Security tab. Least-privilege per zizmor recommendation.
+      security-events: write
     strategy:
       fail-fast: false
       matrix:

@@ -48,11 +48,13 @@ stable `v1.0`.
   `.git/config` (malicious dep install, build script touching git, etc.).
   Now explicitly disabled.
 - **Runtime deps exact-pinned to match Dockerfile.** `beautifulsoup4` and
-  `lxml` in `pyproject.toml` now pin to `==4.12.3` and `==5.3.0` —
+  `lxml` in `pyproject.toml` now pin to `==4.14.3` and `==6.1.1` —
   identical to the Dockerfile pins — so a host-side install and the in-
   container install resolve to byte-identical parsed-tree behavior, and a
   compromised maintainer account cannot push a new patch into installs.
-  Dependabot tracks future bumps.
+  The `lxml 6.1.1` bump (up from `5.3.0`) closes `PYSEC-2026-87`
+  (caught by `pip-audit` in the new static-analysis CI job, fix only
+  available in the 6.1.0+ line). Dependabot tracks future bumps.
 
 ### Fixed
 

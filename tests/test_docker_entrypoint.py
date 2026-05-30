@@ -111,6 +111,14 @@ class TestValidatingRedirectHandler:
             h.redirect_request(*self._fake_args("data:text/plain,hi"))
         assert exc.value.code == 403
 
+    def test_hostless_redirect_blocked(self):
+        # The commit message lists "empty host" as a primary threat the
+        # handler exists to close. Cover it explicitly.
+        h = self._handler()
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            h.redirect_request(*self._fake_args("https:///path"))
+        assert exc.value.code == 403
+
 
 # ── _fetch wiring ─────────────────────────────────────────────────────
 

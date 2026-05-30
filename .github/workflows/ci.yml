@@ -56,9 +56,10 @@ jobs:
       - name: bandit
         run: bandit -r src/ docker/ -ll
       - name: pip-audit
-        # --strict + --skip-editable conflict: strict mode errors on the
-        # local editable safe-fetch install. Skip-editable handles it; we
-        # only care about third-party deps here (Dependabot tracks bumps).
+        # --skip-editable so the local `pip install -e .` install isn't
+        # audited (we care about third-party deps only — Dependabot tracks
+        # them). We don't add --strict because it would promote the skip
+        # warning to a hard failure.
         run: pip-audit --skip-editable
 
   shellcheck:

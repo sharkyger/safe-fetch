@@ -15,6 +15,9 @@ FROM python:3.12-alpine
 # Install sanitizer deps. lxml needs libxml2/libxslt at runtime.
 RUN apk add --no-cache libxml2 libxslt \
  && apk add --no-cache --virtual .build-deps gcc musl-dev libxml2-dev libxslt-dev \
+ # Exact-pin must stay in lockstep with pyproject.toml so the host
+ # and in-container installs resolve to byte-identical parsed-tree
+ # behavior. lxml 6.1.1 closes PYSEC-2026-87 (5.x has no back-port).
  && pip install --no-cache-dir 'beautifulsoup4==4.14.3' 'lxml==6.1.1' \
  && apk del .build-deps
 
