@@ -136,24 +136,54 @@ if ! echo "$COMMAND" \
   exit 0
 fi
 
-# Stage 2: find a host-shaped URL token anywhere in the command.
-# The host token requires a TLD-like suffix (.[A-Za-z]{2,}) so flag
-# values like `-o /tmp/file.bin` don't false-match.
+# Stage 2: find a URL token anywhere in the command.
+#
+# Prefer a scheme-prefixed URL (https://...) first — it unambiguously
+# identifies the URL even if other host-shaped tokens (`-o file.bin`,
+# `--config foo.cfg`) appear earlier in the argv. Fall back to a
+# scheme-less host-shaped token only when no explicit URL is present.
+# The TLD-like suffix (\.[A-Za-z]{2,}) keeps `file.bin`-style flag values
+# from false-matching the fallback.
 URL_PART=$(
   echo "$COMMAND" \
-  | grep -oE '(https?://)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}([/?#][^[:space:]]*)?' \
+  | grep -oE 'https?://[^[:space:]]+' \
   | head -1
 )
+if [ -z "$URL_PART" ]; then
+  # Scheme-less fallback. The optional leading userinfo group
+  # `([A-Za-z0-9._~%!$&'()*+,;=:-]+@)?` is INCLUDED so an attacker
+  # cannot defeat the userinfo-strip below by simply omitting the
+  # scheme (`curl anthropic.com@evil.com/`).
+  URL_PART=$(
+    echo "$COMMAND" \
+    | grep -oE '([A-Za-z0-9._~%!$&'\''()*+,;=:-]+@)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}([/?#][^[:space:]]*)?' \
+    | head -1
+  )
+fi
 if [ -z "$URL_PART" ]; then
   # curl/wget was invoked but no URL was supplied — `curl --version`,
   # `wget --help`. Not a fetch; pass through.
   exit 0
 fi
 
-# Extract host for allowlist comparison.
+# Extract host for allowlist comparison. Sequence:
+#   1. strip scheme
+#   2. strip userinfo (anything up to and including '@', when '@' appears
+#      BEFORE any /?# boundary — i.e. the authority's userinfo separator,
+#      not a stray '@' in a path or query)
+#   3. strip port (:NNNN at end-of-authority)
+#   4. strip path / query / fragment
+#   5. lowercase
+#
+# Step 2 closes the URL-userinfo bypass: `https://anthropic.com@evil.com/`
+# parses as userinfo=`anthropic.com`, host=`evil.com`. Without the strip
+# the old logic compared `anthropic.com` against the allowlist and let
+# curl actually hit `evil.com`.
 HOST=$(
   echo "$URL_PART" \
   | sed -E 's|^https?://||' \
+  | sed -E 's|^[^@/?#]*@||' \
+  | sed -E 's|:[0-9]+([/?#].*)?$|\1|' \
   | sed -E 's|[/?#].*$||' \
   | tr '[:upper:]' '[:lower:]'
 )
