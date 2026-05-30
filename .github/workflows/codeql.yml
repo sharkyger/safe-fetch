@@ -1,0 +1,35 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly drift detection: catch new advisories without waiting for a PR.
+    - cron: "13 7 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@fee9466b8957867761f2d78f922ab084e3e2dd17  # v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-and-quality
+      - name: Analyze
+        uses: github/codeql-action/analyze@fee9466b8957867761f2d78f922ab084e3e2dd17  # v3
+        with:
+          category: "/language:${{ matrix.language }}"

@@ -201,7 +201,10 @@ def _strip_html(soup: BeautifulSoup) -> dict[str, int]:
         el.decompose()
 
     for el in soup.select("[style]"):
-        style = el.get("style", "")
+        style_attr = el.get("style", "")
+        # BeautifulSoup may return list[str] for multi-valued attributes; we
+        # only care about scalar style strings here.
+        style = style_attr if isinstance(style_attr, str) else ""
         c_match = _COLOR_RE.search(style)
         bg_match = _BG_RE.search(style)
         if c_match and bg_match:

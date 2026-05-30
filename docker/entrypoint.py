@@ -18,6 +18,7 @@ from __future__ import annotations
 import sys
 import urllib.error
 import urllib.request
+from typing import NoReturn
 from urllib.parse import urlparse
 
 from sanitizer import sanitize
@@ -27,7 +28,7 @@ MAX_FETCH_BYTES = 5 * 1024 * 1024  # 5 MB raw cap before sanitizer truncates to 
 USER_AGENT = "safe-fetch/0.1.2 (+https://github.com/sharkyger/safe-fetch)"
 
 
-def _die(msg: str, code: int = 2) -> None:
+def _die(msg: str, code: int = 2) -> NoReturn:
     print(f"safe-fetch: {msg}", file=sys.stderr)
     sys.exit(code)
 
@@ -52,7 +53,7 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
     HTTPError so ``_fetch``'s existing exception path reports it.
     """
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         try:
             _validate(newurl)
         except SystemExit:
