@@ -136,24 +136,67 @@ if ! echo "$COMMAND" \
   exit 0
 fi
 
-# Stage 2: find a host-shaped URL token anywhere in the command.
-# The host token requires a TLD-like suffix (.[A-Za-z]{2,}) so flag
-# values like `-o /tmp/file.bin` don't false-match.
+# Stage 2: find a URL token anywhere in the command.
+#
+# Prefer a scheme-prefixed URL (https://...) first — it unambiguously
+# identifies the URL even if other host-shaped tokens (`-o file.bin`,
+# `--config foo.cfg`) appear earlier in the argv. Fall back to a
+# scheme-less host-shaped token only when no explicit URL is present.
+#
+# Note on TLD suffix: `.[A-Za-z]{2,}` does technically match `.bin`
+# (`bin` is alphabetic), so it does NOT by itself prevent `file.bin`
+# from looking like a host. What protects `curl -o /tmp/file.bin
+# https://example.com/page` is the scheme preference above — the
+# fallback only runs when no `https://...` was found.
+#
+# Known limits of the fallback regex (acceptable for v1, threat-model
+# scope is "agent fetches a public webpage"):
+#   - IPv4 literals (`curl 192.168.0.1/admin`) — not matched
+#   - Dot-less internal hosts (`curl localhost:8080`) — not matched
+# Both fall through to "no URL → not a fetch → pass". They would only
+# matter for an agent attacking internal infra via raw curl/wget,
+# which is a different threat model. See v0.1.3 issue
+# bash-hook-stage2-internal-hosts in deferred-v013plus-*.local.md.
 URL_PART=$(
   echo "$COMMAND" \
-  | grep -oE '(https?://)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}([/?#][^[:space:]]*)?' \
+  | grep -oE 'https?://[^[:space:]]+' \
   | head -1
 )
+if [ -z "$URL_PART" ]; then
+  # Scheme-less fallback. The optional leading userinfo group
+  # `([A-Za-z0-9._~%!$&'()*+,;=:-]+@)?` is INCLUDED so an attacker
+  # cannot defeat the userinfo-strip below by simply omitting the
+  # scheme (`curl anthropic.com@evil.com/`).
+  URL_PART=$(
+    echo "$COMMAND" \
+    | grep -oE '([A-Za-z0-9._~%!$&'\''()*+,;=:-]+@)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}([/?#][^[:space:]]*)?' \
+    | head -1
+  )
+fi
 if [ -z "$URL_PART" ]; then
   # curl/wget was invoked but no URL was supplied — `curl --version`,
   # `wget --help`. Not a fetch; pass through.
   exit 0
 fi
 
-# Extract host for allowlist comparison.
+# Extract host for allowlist comparison. Sequence:
+#   1. strip scheme
+#   2. strip userinfo (anything up to and including '@', when '@' appears
+#      BEFORE any /?# boundary — i.e. the authority's userinfo separator,
+#      not a stray '@' in a path or query)
+#   3. strip port (:NNNN at end-of-authority)
+#   4. strip path / query / fragment
+#   5. lowercase
+#
+# Step 2 closes the URL-userinfo bypass: `https://anthropic.com@evil.com/`
+# parses as userinfo=`anthropic.com`, host=`evil.com`. Without the strip
+# the old logic compared `anthropic.com` against the allowlist and let
+# curl actually hit `evil.com`.
 HOST=$(
   echo "$URL_PART" \
   | sed -E 's|^https?://||' \
+  | sed -E 's|^[^@/?#]*@||' \
+  | sed -E 's|:[0-9]+([/?#].*)?$|\1|' \
   | sed -E 's|[/?#].*$||' \
   | tr '[:upper:]' '[:lower:]'
 )

@@ -1,0 +1,44 @@
+# CodeRabbit configuration — assertive profile per fleet floor.
+# Docs: https://docs.coderabbit.ai/guides/configure-coderabbit
+
+language: en-US
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: [main]
+
+  path_filters:
+    - "!docs/PRD.md"  # local design notes — gitignored anyway
+    - "!.codereview/**"
+    - "!*.local.md"
+
+  path_instructions:
+    - path: "src/safe_fetch/data/hooks/**/*.sh"
+      instructions: |
+        These are shell hooks executed by Claude Code as a security gate.
+        Treat any allowlist relaxation, regex weakening, or fail-open path
+        as a security-critical finding. Userinfo bypass, brace expansion
+        bypass, command substitution bypass are known acceptable
+        documented limitations only if explicitly called out in comments.
+    - path: "docker/entrypoint.py"
+      instructions: |
+        Runs INSIDE the safe-fetch:latest container with cap-drop=ALL.
+        Any change must preserve fail-closed semantics: validation errors
+        exit non-zero, never silently degrade.
+    - path: "src/safe_fetch/cli.py"
+      instructions: |
+        Host-side wrapper. DOCKER_FLAGS is the hardening contract — every
+        flag is asserted by tests/test_safe_fetch_cli.py. Treat a missing
+        or relaxed flag as a security regression.
+
+chat:
+  auto_reply: false

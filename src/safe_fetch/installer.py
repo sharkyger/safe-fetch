@@ -25,9 +25,12 @@ Design notes:
 
 from __future__ import annotations
 
+import atexit
 import json
+import os
 import shutil
 import stat
+from contextlib import ExitStack
 from dataclasses import dataclass
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -73,17 +76,34 @@ class Action:
 # ── package-data accessors ──────────────────────────────────────────
 
 
-def _data_root() -> Path:
-    """Resolve the bundled data/ dir to a real Path.
+# Module-level lifecycle for the bundled-data path.
+#
+# When the package is installed loose-on-disk (the common pip layout),
+# ``as_file`` is a no-op and returns the on-disk path directly. When the
+# package is loaded from a zip/wheel without extraction (rare but
+# supported), ``as_file`` extracts the resource into a temporary
+# directory and cleans it up on context-manager exit. The previous
+# implementation returned ``Path(p)`` from inside a closed ``with``
+# block — for zip-loaded packages this yielded a dangling path.
+#
+# The fix keeps the context manager alive for the process lifetime via
+# a module-level ExitStack and caches the resolved Path so subsequent
+# callers don't repeatedly enter a fresh context (which would leak
+# temp directories on the zip path).
+_resource_stack = ExitStack()
+atexit.register(_resource_stack.close)
+_data_root_cache: Path | None = None
 
-    Using ``as_file`` ensures correctness when the package is installed
-    from a zip/wheel — the ``files()`` Traversable may not be a real
-    filesystem path. For a normal pip install this resolves to the
-    package's data/ subdir directly.
+
+def _data_root() -> Path:
+    """Resolve the bundled ``data/`` dir to a real Path that stays valid
+    for the rest of the process.
     """
-    root = files("safe_fetch") / "data"
-    with as_file(root) as p:
-        return Path(p)
+    global _data_root_cache
+    if _data_root_cache is None:
+        root = files("safe_fetch") / "data"
+        _data_root_cache = Path(_resource_stack.enter_context(as_file(root)))
+    return _data_root_cache
 
 
 def _bundled(*parts: str) -> Path:
@@ -126,6 +146,9 @@ def uninstall(target: Path, *, dry_run: bool = False) -> list[Action]:
 # ── hook + command copy ─────────────────────────────────────────────
 
 
+_EXEC_MASK = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+
+
 def _install_hooks(target: Path, *, dry_run: bool) -> list[Action]:
     out_dir = target / "hooks"
     actions: list[Action] = []
@@ -135,12 +158,21 @@ def _install_hooks(target: Path, *, dry_run: bool) -> list[Action]:
         dst = out_dir / name
         src = _bundled("hooks", name)
         if dst.exists() and dst.read_bytes() == src.read_bytes():
-            actions.append(Action("skip", dst, "already installed"))
+            # Bytes match — but if any exec bit was stripped externally
+            # (e.g. operator ran chmod go-x by mistake) reinstall must
+            # heal it rather than reporting "skip — already installed".
+            # Requiring ALL bits in _EXEC_MASK catches partial strips too.
+            if (dst.stat().st_mode & _EXEC_MASK) == _EXEC_MASK:
+                actions.append(Action("skip", dst, "already installed"))
+                continue
+            actions.append(Action("update", dst, "restored executable bits"))
+            if not dry_run:
+                dst.chmod(dst.stat().st_mode | _EXEC_MASK)
             continue
         actions.append(Action("create" if not dst.exists() else "update", dst))
         if not dry_run:
             shutil.copyfile(src, dst)
-            dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            dst.chmod(dst.stat().st_mode | _EXEC_MASK)
     return actions
 
 
@@ -186,8 +218,7 @@ def _merge_settings(target: Path, *, dry_run: bool) -> list[Action]:
         data["hooks"].setdefault(category, [])
         cmd = _hook_command_path(target, hook_filename)
         already_present = any(
-            entry.get("matcher") == matcher
-            and any(h.get("command") == cmd for h in entry.get("hooks", []))
+            entry.get("matcher") == matcher and any(h.get("command") == cmd for h in entry.get("hooks", []))
             for entry in data["hooks"][category]
         )
         if already_present:
@@ -211,14 +242,18 @@ def _unmerge_settings(target: Path, *, dry_run: bool) -> list[Action]:
     if "hooks" not in data:
         return []
 
+    # Anchor on hooks_prefix + os.sep so a sibling directory whose name
+    # merely shares the prefix (`<target>/hooks-backup/...`,
+    # `<target>/hooksy/...`) doesn't get accidentally swept along with
+    # the managed `<target>/hooks/...` entries.
     hooks_prefix = str((target / "hooks").resolve())
+    hooks_prefix_with_sep = hooks_prefix + os.sep
     changed = False
     for category in list(data["hooks"].keys()):
         new_entries: list[dict] = []
         for entry in data["hooks"][category]:
             kept_hooks = [
-                h for h in entry.get("hooks", [])
-                if not h.get("command", "").startswith(hooks_prefix)
+                h for h in entry.get("hooks", []) if not h.get("command", "").startswith(hooks_prefix_with_sep)
             ]
             if not kept_hooks:
                 changed = True
@@ -282,7 +317,15 @@ def _strip_snippet(target: Path, *, dry_run: bool) -> list[Action]:
     if SNIPPET_BEGIN_MARK not in content or SNIPPET_END_MARK not in content:
         return [Action("skip", claude_md, "no snippet to remove")]
     begin = content.index(SNIPPET_BEGIN_MARK)
-    end = content.index(SNIPPET_END_MARK) + len(SNIPPET_END_MARK)
+    # Search for END strictly AFTER the located BEGIN. If a stray END
+    # marker appears earlier in the file (e.g. quoted in operator prose
+    # before the managed block), an unanchored first-match would pick
+    # that one — yielding a slice that leaves the real snippet in
+    # place. If no END follows BEGIN, the block is malformed; skip.
+    end_idx = content.find(SNIPPET_END_MARK, begin)
+    if end_idx == -1:
+        return [Action("skip", claude_md, "no END marker after BEGIN")]
+    end = end_idx + len(SNIPPET_END_MARK)
     # Strip the block + the surrounding blank line we appended at install.
     stripped = (content[:begin].rstrip() + "\n" + content[end:].lstrip("\n")).rstrip() + "\n"
     if stripped.strip() == "":
