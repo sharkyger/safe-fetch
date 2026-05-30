@@ -24,7 +24,7 @@ from sanitizer import sanitize
 
 FETCH_TIMEOUT_SECONDS = 15
 MAX_FETCH_BYTES = 5 * 1024 * 1024  # 5 MB raw cap before sanitizer truncates to 20 KB
-USER_AGENT = "safe-fetch/1.0 (+https://github.com/sharkyger/safe-fetch)"
+USER_AGENT = "safe-fetch/0.1.1 (+https://github.com/sharkyger/safe-fetch)"
 
 
 def _die(msg: str, code: int = 2) -> None:
