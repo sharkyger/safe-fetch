@@ -57,9 +57,7 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
         try:
             _validate(newurl)
         except SystemExit:
-            raise urllib.error.HTTPError(
-                newurl, 403, "redirect to disallowed URL", headers, fp
-            ) from None
+            raise urllib.error.HTTPError(newurl, 403, "redirect to disallowed URL", headers, fp) from None
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 

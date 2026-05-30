@@ -45,7 +45,7 @@ DOCKER_FLAGS = [
     "--network=bridge",
     "--read-only",
     "--tmpfs",
-    "/tmp:rw,size=8m,noexec,nosuid",  # noqa: S108 — docker tmpfs spec, not a host-side temp path
+    "/tmp:rw,size=8m,noexec,nosuid",  # noqa: S108  # nosec B108 — docker tmpfs spec, not a host-side temp path
     "--cap-drop=ALL",
     "--security-opt",
     "no-new-privileges",
@@ -115,8 +115,9 @@ def _run_installer(install: bool, target: Path, dry_run: bool) -> int:
 
     label = "install" if install else "uninstall"
     try:
-        actions = installer.install(target, dry_run=dry_run) if install \
-            else installer.uninstall(target, dry_run=dry_run)
+        actions = (
+            installer.install(target, dry_run=dry_run) if install else installer.uninstall(target, dry_run=dry_run)
+        )
     except installer.InstallerError as e:
         print(f"safe-fetch: {label} failed: {e}", file=sys.stderr)
         return 2

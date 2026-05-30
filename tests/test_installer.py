@@ -163,11 +163,7 @@ class TestPreservesExistingConfig:
         installer.install(tmp_target)
         data = json.loads((tmp_target / "settings.json").read_text())
         # User's custom WebFetch hook and SomeOtherTool entries survive
-        commands = [
-            h["command"]
-            for entry in data["hooks"]["PreToolUse"]
-            for h in entry["hooks"]
-        ]
+        commands = [h["command"] for entry in data["hooks"]["PreToolUse"] for h in entry["hooks"]]
         assert "/custom/user/hook.sh" in commands
         assert "/another/hook.sh" in commands
 
@@ -257,11 +253,7 @@ class TestUninstall:
         installer.install(tmp_target)
         installer.uninstall(tmp_target)
         data = json.loads((tmp_target / "settings.json").read_text())
-        commands = [
-            h["command"]
-            for entry in data["hooks"].get("PreToolUse", [])
-            for h in entry["hooks"]
-        ]
+        commands = [h["command"] for entry in data["hooks"].get("PreToolUse", []) for h in entry["hooks"]]
         assert "/custom/user/hook.sh" in commands
         # Our hook command (path under tmp_target/hooks/) should be gone
         assert not any(c.startswith(str(tmp_target / "hooks")) for c in commands)
@@ -362,9 +354,7 @@ class TestStripSnippetEndMarkerOrdering:
         installer.uninstall(tmp_target)
         result = (tmp_target / "CLAUDE.md").read_text()
         assert installer.SNIPPET_BEGIN_MARK not in result
-        assert "Real snippet body" not in result, (
-            "snippet body survived strip — end-marker first-match bug"
-        )
+        assert "Real snippet body" not in result, "snippet body survived strip — end-marker first-match bug"
         # The stray END marker + surrounding prose stays.
         assert "Earlier prose with stray marker" in result
         assert "Tail content." in result
@@ -393,14 +383,8 @@ class TestUninstallPrefixIsPathBoundary:
         installer.install(tmp_target)
         installer.uninstall(tmp_target)
         data = json.loads((tmp_target / "settings.json").read_text())
-        commands = [
-            h["command"]
-            for entry in data["hooks"].get("PreToolUse", [])
-            for h in entry["hooks"]
-        ]
-        assert backup_cmd in commands, (
-            f"hooks-backup entry was incorrectly stripped: {commands}"
-        )
+        commands = [h["command"] for entry in data["hooks"].get("PreToolUse", []) for h in entry["hooks"]]
+        assert backup_cmd in commands, f"hooks-backup entry was incorrectly stripped: {commands}"
 
 
 class TestReinstallRestoresExecBits:
@@ -417,9 +401,7 @@ class TestReinstallRestoresExecBits:
         assert not (hook.stat().st_mode & stat.S_IXUSR)
         # Reinstall — should detect missing exec bits and restore
         installer.install(tmp_target)
-        assert hook.stat().st_mode & stat.S_IXUSR, (
-            "user-exec bit not restored on reinstall"
-        )
+        assert hook.stat().st_mode & stat.S_IXUSR, "user-exec bit not restored on reinstall"
 
 
 # ── helpers ─────────────────────────────────────────────────────────
@@ -427,8 +409,4 @@ class TestReinstallRestoresExecBits:
 
 def _snapshot(root: Path) -> dict[str, bytes]:
     """Return a {relative-path: content-bytes} snapshot for diff checks."""
-    return {
-        str(p.relative_to(root)): p.read_bytes()
-        for p in sorted(root.rglob("*"))
-        if p.is_file()
-    }
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}

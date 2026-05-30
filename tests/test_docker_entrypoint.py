@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src" / "safe_fetch"))
 sys.path.insert(0, str(REPO_ROOT / "docker"))
 
-import entrypoint  # noqa: E402
+import entrypoint  # noqa: E402  # isort: skip
 
 
 # ── _validate ─────────────────────────────────────────────────────────
@@ -127,8 +127,7 @@ class TestUserAgentMatchesPackageVersion:
         from safe_fetch import __version__
 
         assert __version__ in entrypoint.USER_AGENT, (
-            f"USER_AGENT={entrypoint.USER_AGENT!r} does not include "
-            f"__version__={__version__!r}"
+            f"USER_AGENT={entrypoint.USER_AGENT!r} does not include __version__={__version__!r}"
         )
 
     def test_user_agent_starts_with_product_name(self):
@@ -154,6 +153,6 @@ class TestFetchUsesValidatingHandler:
             entrypoint._fetch("https://example.com/")
         build.assert_called_once()
         installed = build.call_args.args
-        assert any(
-            isinstance(h, entrypoint._ValidatingRedirectHandler) for h in installed
-        ), f"expected a _ValidatingRedirectHandler in build_opener args, got {installed!r}"
+        assert any(isinstance(h, entrypoint._ValidatingRedirectHandler) for h in installed), (
+            f"expected a _ValidatingRedirectHandler in build_opener args, got {installed!r}"
+        )

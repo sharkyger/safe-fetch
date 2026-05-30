@@ -218,8 +218,7 @@ def _merge_settings(target: Path, *, dry_run: bool) -> list[Action]:
         data["hooks"].setdefault(category, [])
         cmd = _hook_command_path(target, hook_filename)
         already_present = any(
-            entry.get("matcher") == matcher
-            and any(h.get("command") == cmd for h in entry.get("hooks", []))
+            entry.get("matcher") == matcher and any(h.get("command") == cmd for h in entry.get("hooks", []))
             for entry in data["hooks"][category]
         )
         if already_present:
@@ -254,8 +253,7 @@ def _unmerge_settings(target: Path, *, dry_run: bool) -> list[Action]:
         new_entries: list[dict] = []
         for entry in data["hooks"][category]:
             kept_hooks = [
-                h for h in entry.get("hooks", [])
-                if not h.get("command", "").startswith(hooks_prefix_with_sep)
+                h for h in entry.get("hooks", []) if not h.get("command", "").startswith(hooks_prefix_with_sep)
             ]
             if not kept_hooks:
                 changed = True

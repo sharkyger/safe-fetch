@@ -59,7 +59,7 @@ MAX_BASE64_DECODE_LEN = 500
 # ── unicode (mirrors src/sanitize/unicode.ts) ────────────────────────
 
 
-INVISIBLE_CHARS = re.compile(r"[​‌‍‎‏⁠⁣﻿­]")
+INVISIBLE_CHARS = re.compile(r"[​‌‍‎‏⁠⁣﻿­]")  # nosec B613 — sanitizer pattern, deliberately contains the chars it strips
 BIDI_CHARS = re.compile(r"[‪-‮⁦-⁩]")
 VARIATION_SELECTORS = re.compile(r"[︀-️]")
 UNICODE_TAGS = re.compile(r"[\U000e0001-\U000e007f]")

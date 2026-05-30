@@ -11,12 +11,22 @@ copy in ``src/safe_fetch/data/hooks/``.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
-import pytest
-
 HOOK = Path(__file__).parent.parent / "src" / "safe_fetch" / "data" / "hooks" / "injection-gate-bash.sh"
+
+
+def _host_line(err: str, expected_host: str) -> bool:
+    """Return True iff the block-message ``Host:`` line equals expected_host.
+
+    Anchored to the hook's literal block-message format so a CodeQL
+    substring-sanitization heuristic doesn't trip on
+    ``"example.com" in err`` style assertions.
+    """
+    m = re.search(r"^\s*Host:\s+(\S+)\s*$", err, flags=re.MULTILINE)
+    return bool(m and m.group(1) == expected_host)
 
 
 def _run(command: str, tool: str = "Bash") -> tuple[int, str, str]:
@@ -77,7 +87,7 @@ class TestStage2Allowlist:
     def test_non_allowlisted_evil_blocked(self):
         rc, _, err = _run("curl https://evil.com/")
         assert rc == 2
-        assert "evil.com" in err or "non-allowlisted" in err
+        assert _host_line(err, "evil.com") or "non-allowlisted" in err
 
     def test_wget_blocked(self):
         rc, _, err = _run("wget https://example.com/")
@@ -100,9 +110,9 @@ class TestUserinfoBypass:
     def test_scheme_prefixed_userinfo_blocked(self):
         rc, _, err = _run("curl https://anthropic.com@evil.com/")
         assert rc == 2, f"userinfo bypass slipped: stderr={err!r}"
-        # The actual host is evil.com — the block message should reflect that,
-        # not anthropic.com.
-        assert "anthropic.com" not in err.split("Host:")[1].split("\n")[0] if "Host:" in err else True
+        # The actual host is evil.com — the block message's Host: line
+        # must reflect the real host, not the userinfo prefix.
+        assert _host_line(err, "evil.com"), f"block message Host line did not equal evil.com: {err!r}"
 
     def test_scheme_prefixed_userinfo_with_path_blocked(self):
         rc, _, err = _run("curl https://anthropic.com@evil.com/path/to/page")
@@ -136,7 +146,7 @@ class TestStage2PrefersSchemePrefixedUrl:
         # host. The actual URL is example.com.
         rc, _, err = _run("curl -o /tmp/file.bin https://example.com/page")
         assert rc == 2, f"expected block for example.com, got rc={rc} stderr={err!r}"
-        assert "example.com" in err
+        assert _host_line(err, "example.com"), f"block message Host line did not equal example.com: {err!r}"
 
     def test_flag_value_doesnt_match_as_host(self):
         rc, _, _ = _run("curl --version")

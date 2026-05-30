@@ -94,5 +94,9 @@ strict_equality = true
 ignore_missing_imports = true
 
 [tool.bandit]
-skips = ["B101"]  # assert is fine outside tests too
+# B101 — assert is fine outside tests too.
+# Inline `# nosec` markers are preferred for findings that need
+# per-call justification (B108 docker tmpfs spec in cli.py;
+# B613 sanitizer regex pattern in sanitizer.py).
+skips = ["B101"]
 exclude_dirs = ["tests"]
