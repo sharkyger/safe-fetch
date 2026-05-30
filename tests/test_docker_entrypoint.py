@@ -115,6 +115,26 @@ class TestValidatingRedirectHandler:
 # ── _fetch wiring ─────────────────────────────────────────────────────
 
 
+class TestUserAgentMatchesPackageVersion:
+    """The in-container USER_AGENT string must include the same version
+    string that `safe_fetch.__version__` reports.
+
+    The container image bundles `entrypoint.py` but not `safe_fetch.__init__`,
+    so the version is kept in sync manually; this test catches drift.
+    """
+
+    def test_user_agent_contains_package_version(self):
+        from safe_fetch import __version__
+
+        assert __version__ in entrypoint.USER_AGENT, (
+            f"USER_AGENT={entrypoint.USER_AGENT!r} does not include "
+            f"__version__={__version__!r}"
+        )
+
+    def test_user_agent_starts_with_product_name(self):
+        assert entrypoint.USER_AGENT.startswith("safe-fetch/")
+
+
 class TestFetchUsesValidatingHandler:
     """``_fetch`` must build an opener that includes
     ``_ValidatingRedirectHandler``.
