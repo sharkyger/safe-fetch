@@ -31,8 +31,11 @@ dependencies = [
     # Exact-pin to match docker/Dockerfile so the host-side install and
     # the in-container install resolve to the same parsed-tree behavior.
     # Dependabot tracks bumps; manual PRs update Dockerfile in lockstep.
-    "beautifulsoup4==4.12.3",
-    "lxml==5.3.0",
+    #
+    # lxml 6.1.1 closes PYSEC-2026-87 (fix landed in 6.1.0); 5.x has no
+    # back-port. bs4 4.14.3 is latest stable + past freshness hold.
+    "beautifulsoup4==4.14.3",
+    "lxml==6.1.1",
 ]
 
 [project.urls]

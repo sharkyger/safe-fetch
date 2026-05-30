@@ -15,7 +15,7 @@ FROM python:3.12-alpine
 # Install sanitizer deps. lxml needs libxml2/libxslt at runtime.
 RUN apk add --no-cache libxml2 libxslt \
  && apk add --no-cache --virtual .build-deps gcc musl-dev libxml2-dev libxslt-dev \
- && pip install --no-cache-dir 'beautifulsoup4==4.12.3' 'lxml==5.3.0' \
+ && pip install --no-cache-dir 'beautifulsoup4==4.14.3' 'lxml==6.1.1' \
  && apk del .build-deps
 
 WORKDIR /app
