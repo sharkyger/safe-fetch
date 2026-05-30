@@ -165,8 +165,6 @@ case "$HOST" in
     exit 0 ;;
   code.claude.com|platform.claude.com|claude.com|www.claude.com)
     exit 0 ;;
-  augatho.com|*.augatho.com)
-    exit 0 ;;
 esac
 
 # Reconstruct a usable URL for the suggestion message.

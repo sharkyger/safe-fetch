@@ -3,6 +3,13 @@
 Docker-isolated URL fetcher with a Layer-2 prompt-injection sanitizer
 for LLM agents.
 
+> **Status — open beta (v0.x.y).** API surface, sanitizer heuristics,
+> and the `<UNTRUSTED-WEB>` envelope format may change before v1.0.
+> v1.0.0 and v1.0.1 were tagged before the project's pre-stable
+> versioning rule (pre-stable = v0.x.y) was adopted on 2026-05-29; the
+> pre-stable line continues as v0.1.x. No code change from v1.0.1 —
+> only the honest label.
+
 ## What it does
 
 When an AI agent (Claude Code, a custom LangChain agent, your own
