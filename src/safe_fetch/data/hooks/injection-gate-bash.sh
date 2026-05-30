@@ -142,8 +142,21 @@ fi
 # identifies the URL even if other host-shaped tokens (`-o file.bin`,
 # `--config foo.cfg`) appear earlier in the argv. Fall back to a
 # scheme-less host-shaped token only when no explicit URL is present.
-# The TLD-like suffix (\.[A-Za-z]{2,}) keeps `file.bin`-style flag values
-# from false-matching the fallback.
+#
+# Note on TLD suffix: `.[A-Za-z]{2,}` does technically match `.bin`
+# (`bin` is alphabetic), so it does NOT by itself prevent `file.bin`
+# from looking like a host. What protects `curl -o /tmp/file.bin
+# https://example.com/page` is the scheme preference above — the
+# fallback only runs when no `https://...` was found.
+#
+# Known limits of the fallback regex (acceptable for v1, threat-model
+# scope is "agent fetches a public webpage"):
+#   - IPv4 literals (`curl 192.168.0.1/admin`) — not matched
+#   - Dot-less internal hosts (`curl localhost:8080`) — not matched
+# Both fall through to "no URL → not a fetch → pass". They would only
+# matter for an agent attacking internal infra via raw curl/wget,
+# which is a different threat model. See v0.1.3 issue
+# bash-hook-stage2-internal-hosts in deferred-v013plus-*.local.md.
 URL_PART=$(
   echo "$COMMAND" \
   | grep -oE 'https?://[^[:space:]]+' \

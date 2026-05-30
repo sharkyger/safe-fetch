@@ -158,10 +158,11 @@ def _install_hooks(target: Path, *, dry_run: bool) -> list[Action]:
         dst = out_dir / name
         src = _bundled("hooks", name)
         if dst.exists() and dst.read_bytes() == src.read_bytes():
-            # Bytes match — but if the exec bits were stripped externally
-            # (e.g. operator ran chmod -x by mistake) reinstall must heal
-            # them rather than reporting "skip — already installed".
-            if dst.stat().st_mode & _EXEC_MASK:
+            # Bytes match — but if any exec bit was stripped externally
+            # (e.g. operator ran chmod go-x by mistake) reinstall must
+            # heal it rather than reporting "skip — already installed".
+            # Requiring ALL bits in _EXEC_MASK catches partial strips too.
+            if (dst.stat().st_mode & _EXEC_MASK) == _EXEC_MASK:
                 actions.append(Action("skip", dst, "already installed"))
                 continue
             actions.append(Action("update", dst, "restored executable bits"))
@@ -322,8 +323,11 @@ def _strip_snippet(target: Path, *, dry_run: bool) -> list[Action]:
     # marker appears earlier in the file (e.g. quoted in operator prose
     # before the managed block), an unanchored first-match would pick
     # that one — yielding a slice that leaves the real snippet in
-    # place.
-    end = content.index(SNIPPET_END_MARK, begin) + len(SNIPPET_END_MARK)
+    # place. If no END follows BEGIN, the block is malformed; skip.
+    end_idx = content.find(SNIPPET_END_MARK, begin)
+    if end_idx == -1:
+        return [Action("skip", claude_md, "no END marker after BEGIN")]
+    end = end_idx + len(SNIPPET_END_MARK)
     # Strip the block + the surrounding blank line we appended at install.
     stripped = (content[:begin].rstrip() + "\n" + content[end:].lstrip("\n")).rstrip() + "\n"
     if stripped.strip() == "":
