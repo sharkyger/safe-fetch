@@ -276,6 +276,152 @@ class TestUninstall:
         assert "Existing content" in content
 
 
+# ── regression: deferred v0.1.1 findings ────────────────────────────
+
+
+class TestDataRootStaysAccessible:
+    """The _data_root helper must return a Path that remains valid for the
+    duration of the process. The original implementation returned the path
+    from inside an ``as_file()`` context manager whose ``__exit__`` ran
+    before the function returned — for zip/wheel-loaded packages this
+    yielded a Path to an already-cleaned-up temp dir. Even though
+    pip-installed (loose) layouts didn't hit the bug, repeated calls
+    should produce identical, readable paths.
+    """
+
+    def test_data_root_path_exists(self):
+        p = installer._data_root()
+        assert p.exists()
+        assert p.is_dir()
+
+    def test_bundled_files_are_readable(self):
+        for hook in installer.HOOK_FILES:
+            f = installer._bundled("hooks", hook)
+            assert f.exists()
+            content = f.read_bytes()
+            assert content.startswith(b"#!/bin/bash")
+
+    def test_data_root_is_stable_across_calls(self):
+        p1 = installer._data_root()
+        p2 = installer._data_root()
+        assert p1 == p2
+
+    def test_data_root_still_readable_after_repeated_access(self):
+        # Simulates the lifecycle bug: even after multiple as_file
+        # entries, the bundled file should remain accessible.
+        for _ in range(10):
+            installer._data_root()
+        f = installer._bundled("hooks", "injection-gate-bash.sh")
+        assert f.read_bytes().startswith(b"#!/bin/bash")
+
+    def test_data_root_caches_as_file_entry(self, monkeypatch):
+        # The lifecycle fix uses a module-level ExitStack to keep the
+        # as_file context manager alive AND caches the resolved Path so
+        # subsequent calls don't enter another context. This test
+        # verifies the cache: as_file should be called once even after
+        # many _data_root() calls.
+        monkeypatch.setattr(installer, "_data_root_cache", None)
+        real_as_file = installer.as_file
+        call_count = {"n": 0}
+
+        def counting_as_file(traversable):
+            call_count["n"] += 1
+            return real_as_file(traversable)
+
+        monkeypatch.setattr(installer, "as_file", counting_as_file)
+        for _ in range(5):
+            installer._data_root()
+        assert call_count["n"] == 1, (
+            f"as_file called {call_count['n']} times — cache not honored, "
+            "extracted temp dir from a zip-loaded package would be cleaned up "
+            "before the path is read"
+        )
+
+
+class TestStripSnippetEndMarkerOrdering:
+    """``_strip_snippet`` must locate the END marker AFTER the matched
+    BEGIN. If a stray END appears before BEGIN (e.g. operator copied a
+    marker comment into a code example earlier in the file), the original
+    code took the first END occurrence — yielding a slice that left the
+    real snippet body in place.
+    """
+
+    def test_stray_end_before_begin_does_not_break_strip(self, tmp_target: Path):
+        tmp_target.mkdir(parents=True)
+        # Put a stray END mark in earlier prose, then the real bracketed snippet.
+        content = (
+            f"# Earlier prose with stray marker\n"
+            f"{installer.SNIPPET_END_MARK} (this is documentation, not paired)\n\n"
+            f"More user content here.\n\n"
+            f"{installer.SNIPPET_BEGIN_MARK}\n"
+            f"Real snippet body — should be stripped.\n"
+            f"{installer.SNIPPET_END_MARK}\n"
+            f"\nTail content.\n"
+        )
+        (tmp_target / "CLAUDE.md").write_text(content)
+        installer.uninstall(tmp_target)
+        result = (tmp_target / "CLAUDE.md").read_text()
+        assert installer.SNIPPET_BEGIN_MARK not in result
+        assert "Real snippet body" not in result, (
+            "snippet body survived strip — end-marker first-match bug"
+        )
+        # The stray END marker + surrounding prose stays.
+        assert "Earlier prose with stray marker" in result
+        assert "Tail content." in result
+
+
+class TestUninstallPrefixIsPathBoundary:
+    """``_unmerge_settings`` must only strip hook entries whose command
+    is inside ``<target>/hooks/`` — not entries that merely share the
+    string prefix (``<target>/hooks-backup/...``, ``<target>/hooksy/...``).
+    """
+
+    def test_unrelated_hooks_backup_entry_survives_uninstall(self, tmp_target: Path):
+        tmp_target.mkdir(parents=True)
+        backup_cmd = str(tmp_target / "hooks-backup" / "ours.sh")
+        existing = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "WebFetch",
+                        "hooks": [{"type": "command", "command": backup_cmd}],
+                    },
+                ],
+            },
+        }
+        (tmp_target / "settings.json").write_text(json.dumps(existing))
+        installer.install(tmp_target)
+        installer.uninstall(tmp_target)
+        data = json.loads((tmp_target / "settings.json").read_text())
+        commands = [
+            h["command"]
+            for entry in data["hooks"].get("PreToolUse", [])
+            for h in entry["hooks"]
+        ]
+        assert backup_cmd in commands, (
+            f"hooks-backup entry was incorrectly stripped: {commands}"
+        )
+
+
+class TestReinstallRestoresExecBits:
+    """If a hook file's bytes match the bundled source but the exec bits
+    were stripped externally (e.g. ``chmod -x``), reinstall should
+    notice and re-set the executable bits rather than skipping.
+    """
+
+    def test_chmod_removes_exec_bits_then_reinstall_restores(self, tmp_target: Path):
+        installer.install(tmp_target)
+        hook = tmp_target / "hooks" / "injection-gate-bash.sh"
+        # Strip exec bits
+        hook.chmod(0o644)
+        assert not (hook.stat().st_mode & stat.S_IXUSR)
+        # Reinstall — should detect missing exec bits and restore
+        installer.install(tmp_target)
+        assert hook.stat().st_mode & stat.S_IXUSR, (
+            "user-exec bit not restored on reinstall"
+        )
+
+
 # ── helpers ─────────────────────────────────────────────────────────
 
 
