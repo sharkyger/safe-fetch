@@ -287,6 +287,43 @@ class TestProxyPassthrough:
         cmd = cli._build_docker_command("https://example.com/")
         assert "HTTPS_PROXY=" not in cmd
 
+    def test_lowercase_proxy_var_also_honored(self):
+        # Linux convention honors both cases. Lowercase alone should
+        # propagate; the docker -e flag still uses canonical uppercase.
+        import os
+
+        os.environ.pop("HTTPS_PROXY", None)
+        os.environ["https_proxy"] = "http://lowercase-proxy:8080"
+        try:
+            cmd = cli._build_docker_command("https://example.com/")
+            assert "-e" in cmd
+            assert "HTTPS_PROXY=http://lowercase-proxy:8080" in cmd
+        finally:
+            os.environ.pop("https_proxy", None)
+
+    def test_uppercase_wins_when_both_cases_set(self):
+        # If both HTTPS_PROXY and https_proxy are set, uppercase wins.
+        import os
+
+        os.environ["HTTPS_PROXY"] = "http://upper:1"
+        os.environ["https_proxy"] = "http://lower:2"
+        try:
+            cmd = cli._build_docker_command("https://example.com/")
+            assert "HTTPS_PROXY=http://upper:1" in cmd
+            assert "HTTPS_PROXY=http://lower:2" not in cmd
+        finally:
+            os.environ.pop("https_proxy", None)
+
+    def test_whitespace_only_proxy_value_treated_as_unset(self):
+        # A whitespace-only proxy value is almost certainly accidental —
+        # treat as unset rather than forwarding a single-space URL.
+        import os
+
+        os.environ["HTTPS_PROXY"] = "   "
+        cmd = cli._build_docker_command("https://example.com/")
+        proxy_flags = [a for a in cmd if "PROXY=" in a]
+        assert proxy_flags == [], f"unexpected proxy flags: {proxy_flags}"
+
 
 class TestCheckDocker:
     def test_returns_false_when_docker_binary_missing(self):

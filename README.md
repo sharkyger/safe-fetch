@@ -285,6 +285,36 @@ Edit both files — the WebFetch hook gates `WebFetch`, the Bash hook
 gates raw `curl`/`wget`. Allowlist must match in both for a domain to
 pass through both surfaces.
 
+## Proxy support
+
+`safe-fetch` honors `HTTPS_PROXY`, `HTTP_PROXY`, and `NO_PROXY` as of
+v0.2.0. Both uppercase and lowercase forms are recognized; uppercase
+wins when both are set. The values are forwarded into the isolated
+container so the in-container `urllib` uses the proxy automatically.
+
+Set them in your shell or per-invocation:
+
+```bash
+# Per-invocation
+HTTPS_PROXY=http://corp-proxy:8080 safe-fetch https://example.com
+
+# Persistent
+export HTTPS_PROXY=http://corp-proxy:8080
+export NO_PROXY=internal.corp,.localhost
+safe-fetch https://example.com
+```
+
+**Known limitation — credentials in proxy URLs:** if your proxy URL
+embeds credentials (e.g. `https://user:pass@proxy:8080`), those
+credentials appear in the `docker run` command-line arguments and may
+be visible to other users on the host via `ps aux` while the
+container runs. For environments where this matters, prefer proxy
+authentication via a credentials file your proxy supports (e.g.
+`.netrc`) or use a proxy that doesn't require inline credentials.
+The exposure is inherent to the docker `-e VAR=value` flag pattern
+and isn't `safe-fetch`-specific — every CLI tool that forwards env
+vars to subprocesses has the same property.
+
 ## Troubleshooting
 
 **"safe-fetch: Docker is not available."** — Docker Desktop isn't
@@ -342,14 +372,13 @@ server responses with `<UNTRUSTED-MCP>`.
 3. **No process containment beyond the existing Docker isolation.** No
    Landlock, no seccomp, no namespace policy beyond what the container
    already enforces.
-4. **No LLM-runtime detection layers.** Static wrap-tag pattern only.
-   No L3-judge model that re-reads the content with another LLM. The
-   Layer-4 model rule (the system rule that tells the agent to treat
+4. **Static wrap-tag pattern, not LLM-runtime detection.** No L3-judge
+   model that re-reads content with another LLM. The Layer-4 model
+   rule (the system rule that tells the agent to treat
    `<UNTRUSTED-*>` as data) is the runtime defense — that lives in the
    *consumer* agent's system prompt, not in `safe-fetch`.
-5. **No multi-protocol scanning** (A2A, WebSocket, gRPC, etc.). HTTP
-   only for `safe-fetch`. MCP gets its own repo with its own wrap-tag
-   pattern.
+5. **HTTP only.** A2A, WebSocket, gRPC scanning is out of scope. MCP
+   gets its own repo with its own wrap-tag pattern.
 
 If you find yourself wanting feature X from this list, the right answer
 is almost always to compose `safe-fetch` with a tool that does X
