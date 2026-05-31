@@ -1,3 +1,3 @@
 """safe-fetch — Docker-isolated URL fetcher + Layer-2 sanitizer."""
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"

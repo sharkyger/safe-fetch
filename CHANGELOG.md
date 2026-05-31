@@ -6,6 +6,68 @@ follows [SemVer](https://semver.org/), with the project-specific
 pre-stable rule that `v0.x.y` precedes the first reliably-tested
 stable `v1.0`.
 
+## [0.2.0] - 2026-05-31
+
+### Theme
+
+**Positioning release.** Code surface stays minimal (one new env-var
+passthrough). Docs/scope surface expands to declare what `safe-fetch`
+is, what it isn't, and which tools own the lanes outside the carve-out
+list. Goal: future contributors and downstream consumers don't ask
+"why don't you add X?" when X is in someone else's lane.
+
+### Added
+
+- **`HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` honoring.** When any of
+  these env vars are set on the host, they're forwarded into the
+  isolated container via `-e VAR=value` so the in-container `urllib`
+  honors them. Composes with proxy-based scanners like
+  [pipelock](https://github.com/luckyPipewrench/pipelock) without
+  `safe-fetch` becoming one. **Zero behavior change when none are
+  set** — the docker argv is byte-identical to v0.1.x in that case.
+  Empty-string values are treated as unset. Forwarding order is
+  stable (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`) so the docker
+  argv is deterministic for tests and audit. The URL stays the
+  final positional arg, so the v0.1.x security invariant ("flag
+  injection via URL is impossible") still holds. 7 new regression
+  tests in `tests/test_safe_fetch_cli.py::TestProxyPassthrough`.
+- **`docs/SCOPE.md`** — tracked, canonical scope statement + 5 hard
+  carve-outs. Mirrors the README's Scope section as the
+  authoritative form.
+- **README "What `safe-fetch` does NOT catch" subsection** inside the
+  Threat model section. Names the inherent boundary: the Bash hook is
+  regex on the agent's command text, so tools that fetch URLs
+  internally (`brew`, `git`, `gh`, `pip`, `npm`, `apt`, `dnf`, …)
+  bypass the hook by design. Points to pipelock for network-layer
+  scanning when wanted.
+- **README "Alternative approaches" section.** Acknowledges
+  [pipelock](https://github.com/luckyPipewrench/pipelock) and
+  [vault](https://github.com/vaultmcp/vault) as different design
+  philosophies rather than competitors. Each gets a one-liner of
+  what they're good at and when to reach for them.
+- **README "Scope" section.** One-liner + the 5 hard carve-outs
+  (no blockchain, no DLP, no extra process containment, no
+  LLM-runtime detection, no multi-protocol scanning). Mirrors
+  `docs/SCOPE.md`.
+
+### Changed
+
+- `safe-fetch/0.2.0` USER_AGENT. Tracks the package version (the
+  existing `TestUserAgentMatchesPackageVersion` regression test
+  catches drift).
+
+### Verification
+
+- 133 pytest tests pass (was 126 at v0.1.2; +7 new proxy
+  passthrough tests). The new regression class exercises (a) no
+  proxy vars → no `-e` flags, (b) `HTTPS_PROXY` only, (c) all three
+  set with stable order, (d) values preserved verbatim (no
+  mangling), (e) proxy flags positioned before image (so they go to
+  docker, not the entrypoint), (f) URL remains the final positional
+  arg, (g) empty-string proxy value is treated as unset.
+- mypy clean on 6 source files.
+- shellcheck clean on 4 bundled hooks + `docker/build.sh`.
+
 ## [0.1.2] - 2026-05-30
 
 ### Security

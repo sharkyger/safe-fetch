@@ -90,6 +90,26 @@ paraphrase, while creating false confidence. Layer 4 (the model rule) is the
 correct mitigation for that class. If you skip the `--install-claude-hooks`
 step, the semantic-prose vector reaches your agent unwrapped.
 
+**What `safe-fetch` does NOT catch.** Honest scope, so there are no
+surprises:
+
+- Tools that fetch URLs internally — `brew`, `git`, `gh`, `pip`, `npm`,
+  `apt`, `dnf`, etc. The Bash hook is a regex over the agent's command
+  text; `brew search foo` looks like a brew command, not a fetch. Their
+  internal HTTP traffic happens via the tool's own libcurl bindings, not
+  via the `curl` binary the hook matches against.
+- HTTP traffic from any subprocess the agent launches that isn't a
+  literal `curl` / `wget` call.
+- Interactive agents that bypass `safe-fetch` and read URLs through
+  another tool you've authorized.
+
+For comprehensive network-layer scanning across all subprocess HTTP,
+compose `safe-fetch` with a proxy-based tool like
+[pipelock](https://github.com/luckyPipewrench/pipelock) at the network
+layer. v0.2.0+ honors `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` so the
+in-container fetch routes through your proxy automatically when those
+env vars are set (zero behavior change when they aren't).
+
 ## How to use it
 
 Two surfaces: the CLI directly, and Claude Code.
@@ -265,6 +285,36 @@ Edit both files — the WebFetch hook gates `WebFetch`, the Bash hook
 gates raw `curl`/`wget`. Allowlist must match in both for a domain to
 pass through both surfaces.
 
+## Proxy support
+
+`safe-fetch` honors `HTTPS_PROXY`, `HTTP_PROXY`, and `NO_PROXY` as of
+v0.2.0. Both uppercase and lowercase forms are recognized; uppercase
+wins when both are set. The values are forwarded into the isolated
+container so the in-container `urllib` uses the proxy automatically.
+
+Set them in your shell or per-invocation:
+
+```bash
+# Per-invocation
+HTTPS_PROXY=http://corp-proxy:8080 safe-fetch https://example.com
+
+# Persistent
+export HTTPS_PROXY=http://corp-proxy:8080
+export NO_PROXY=internal.corp,.localhost
+safe-fetch https://example.com
+```
+
+**Known limitation — credentials in proxy URLs:** if your proxy URL
+embeds credentials (e.g. `https://user:pass@proxy:8080`), those
+credentials appear in the `docker run` command-line arguments and may
+be visible to other users on the host via `ps aux` while the
+container runs. For environments where this matters, prefer proxy
+authentication via a credentials file your proxy supports (e.g.
+`.netrc`) or use a proxy that doesn't require inline credentials.
+The exposure is inherent to the docker `-e VAR=value` flag pattern
+and isn't `safe-fetch`-specific — every CLI tool that forwards env
+vars to subprocesses has the same property.
+
 ## Troubleshooting
 
 **"safe-fetch: Docker is not available."** — Docker Desktop isn't
@@ -284,6 +334,57 @@ single-use marker. Run the slash command, then retry the write.
 **Allowlist too narrow / too wide** — Edit the `case` block in both
 hook files (see Allowlist syntax above). Re-run any test command
 that previously got blocked.
+
+## Alternative approaches
+
+Other tools work this space with different design philosophies:
+
+- **[pipelock](https://github.com/luckyPipewrench/pipelock)** —
+  comprehensive AI-agent firewall: 11-layer scanning, DLP, MCP tool
+  policies, process containment, on-chain reputation (EAS / Base).
+  Apache 2.0. Go daemon. Reach for this if you want enterprise scope
+  and don't mind running a daemon + on-chain attestation.
+- **[vault](https://github.com/vaultmcp/vault)** — MCP-specialized
+  injection scanner: regex + on-device embeddings + LLM-judge fallback
+  for ambiguous cases. MIT. npm/npx. Reach for this if you're focused
+  on MCP-response detection.
+
+`safe-fetch` takes a different approach: **a minimal CLI proxy that wraps
+response content in `<UNTRUSTED-WEB>` tags so the LLM treats fetched data
+as data, not instructions.** No daemon. No blockchain. No LLM at runtime.
+Composes with the above — `HTTPS_PROXY` routes the in-container fetch
+through pipelock (or any HTTP proxy) when set.
+
+## Scope
+
+`safe-fetch` is a CLI proxy that wraps fetched content in `<UNTRUSTED-*>`
+tags so an LLM treats it as data, not instructions. Companion repo
+`mcp-safe-fetch` (planned) applies the same wrap-tag pattern to MCP
+server responses with `<UNTRUSTED-MCP>`.
+
+**Out of scope, by design:**
+
+1. **No blockchain / on-chain anything, ever.** No EAS attestation, no
+   wallet integration, no smart contracts. Cryptographic signing of
+   releases (GPG / Sigstore) is fine — that's just signing. We don't add
+   on-chain components.
+2. **No DLP / exfiltration scanning.** That's pipelock's lane.
+3. **No process containment beyond the existing Docker isolation.** No
+   Landlock, no seccomp, no namespace policy beyond what the container
+   already enforces.
+4. **Static wrap-tag pattern, not LLM-runtime detection.** No L3-judge
+   model that re-reads content with another LLM. The Layer-4 model
+   rule (the system rule that tells the agent to treat
+   `<UNTRUSTED-*>` as data) is the runtime defense — that lives in the
+   *consumer* agent's system prompt, not in `safe-fetch`.
+5. **HTTP only.** A2A, WebSocket, gRPC scanning is out of scope. MCP
+   gets its own repo with its own wrap-tag pattern.
+
+If you find yourself wanting feature X from this list, the right answer
+is almost always to compose `safe-fetch` with a tool that does X
+natively. Network-layer + agent-level isolation are different problems
+solved by different tools; `safe-fetch` is deliberately the agent-level
+piece.
 
 ## Development
 

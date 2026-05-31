@@ -21,6 +21,7 @@ deliberately if you intend to alter the contract.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -96,6 +97,32 @@ def _check_docker() -> bool:
     return result.returncode == 0
 
 
+# Proxy env vars that urllib (in the container) honors. Forwarded
+# verbatim — safe-fetch's job here is composition with proxy-based
+# tools like pipelock, not parsing the values. Order is stable so the
+# docker argv is deterministic for tests and audit.
+_PROXY_VARS: tuple[str, ...] = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")
+
+
+def _proxy_flags() -> list[str]:
+    """Return ``-e VAR=value`` pairs for any non-empty proxy env vars.
+
+    Both uppercase (``HTTPS_PROXY``) and lowercase (``https_proxy``)
+    forms are honored — Linux convention treats both as standard. If
+    both are set, the uppercase value wins (it's the documented
+    canonical form). Empty-string values are treated as unset.
+    """
+    flags: list[str] = []
+    for var in _PROXY_VARS:
+        val = os.environ.get(var) or os.environ.get(var.lower(), "")
+        # Treat whitespace-only values as unset too (same as empty
+        # string). A user setting HTTPS_PROXY="   " almost certainly
+        # didn't intend a single-space proxy URL.
+        if val and val.strip():
+            flags.extend(["-e", f"{var}={val}"])
+    return flags
+
+
 def _build_docker_command(url: str, image: str = IMAGE_NAME) -> list[str]:
     """Pure: assemble the locked-down docker-run argv for the given URL.
 
@@ -103,8 +130,13 @@ def _build_docker_command(url: str, image: str = IMAGE_NAME) -> list[str]:
     flags interpreted by docker itself; positioning the URL after the
     image makes accidental flag-injection impossible even if a future
     refactor mishandles validation.
+
+    ``HTTPS_PROXY`` / ``HTTP_PROXY`` / ``NO_PROXY`` are forwarded into
+    the container via ``-e`` flags (positioned before the image name)
+    so the in-container urllib honors them. When none are set the
+    argv is identical to v0.1.x.
     """
-    return ["docker", "run", *DOCKER_FLAGS, image, url]
+    return ["docker", "run", *DOCKER_FLAGS, *_proxy_flags(), image, url]
 
 
 # ── installer dispatch ──────────────────────────────────────────────
