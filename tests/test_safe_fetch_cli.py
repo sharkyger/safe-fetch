@@ -192,6 +192,102 @@ class TestMainExitCodes:
 # ── _check_docker ────────────────────────────────────────────────────
 
 
+class TestProxyPassthrough:
+    """`HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` env vars are forwarded into
+    the container so the in-container urllib honors them. Zero behavior
+    change when none are set — this composes with network-layer proxies
+    like pipelock without becoming one ourselves.
+
+    The forwarding is via ``-e VAR=value`` flags appended between
+    ``DOCKER_FLAGS`` and the image name. Order is stable
+    (HTTPS_PROXY, HTTP_PROXY, NO_PROXY) so the test can pin it.
+    """
+
+    def setup_method(self):
+        # Snapshot + clear so each test starts from a clean env
+        self._orig = {v: __import__("os").environ.pop(v, None) for v in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")}
+
+    def teardown_method(self):
+        import os
+
+        for v, val in self._orig.items():
+            if val is not None:
+                os.environ[v] = val
+
+    def test_no_proxy_vars_set_argv_has_no_proxy_flags(self):
+        cmd = cli._build_docker_command("https://example.com/")
+        # No -e ...PROXY= flags should appear
+        proxy_flags = [a for a in cmd if "PROXY=" in a]
+        assert proxy_flags == [], f"unexpected proxy flags: {proxy_flags}"
+
+    def test_https_proxy_set_forwards_to_docker(self):
+        import os
+
+        os.environ["HTTPS_PROXY"] = "http://corp-proxy.internal:8080"
+        cmd = cli._build_docker_command("https://example.com/")
+        # Find the -e HTTPS_PROXY=... pair
+        assert "-e" in cmd
+        ei = cmd.index("-e")
+        assert cmd[ei + 1] == "HTTPS_PROXY=http://corp-proxy.internal:8080"
+
+    def test_all_three_proxies_set_forwarded_in_stable_order(self):
+        import os
+
+        os.environ["HTTPS_PROXY"] = "https://proxy.example:8443"
+        os.environ["HTTP_PROXY"] = "http://proxy.example:8080"
+        os.environ["NO_PROXY"] = "localhost,127.0.0.1,.internal"
+        cmd = cli._build_docker_command("https://example.com/")
+        # Order is HTTPS_PROXY, HTTP_PROXY, NO_PROXY
+        passthroughs = [a for a in cmd if "PROXY=" in a]
+        assert passthroughs == [
+            "HTTPS_PROXY=https://proxy.example:8443",
+            "HTTP_PROXY=http://proxy.example:8080",
+            "NO_PROXY=localhost,127.0.0.1,.internal",
+        ]
+
+    def test_proxy_flags_appear_before_image_not_after(self):
+        # Flags must sit BEFORE the image name; placing them after would
+        # send them as positional args to the container entrypoint
+        # instead of being interpreted by docker.
+        import os
+
+        os.environ["HTTPS_PROXY"] = "http://p:1"
+        cmd = cli._build_docker_command("https://example.com/")
+        image_idx = cmd.index(cli.IMAGE_NAME)
+        proxy_indices = [i for i, a in enumerate(cmd) if "PROXY=" in a]
+        for pi in proxy_indices:
+            assert pi < image_idx, f"proxy flag at {pi} appears at/after image at {image_idx}: {cmd!r}"
+
+    def test_proxy_value_preserved_verbatim_no_mangling(self):
+        # Don't strip, don't lower-case, don't validate — pass through.
+        import os
+
+        weird = "http://user:p%40ss@proxy.example:8080/path?x=y&z=1"
+        os.environ["HTTPS_PROXY"] = weird
+        cmd = cli._build_docker_command("https://example.com/")
+        assert f"HTTPS_PROXY={weird}" in cmd
+
+    def test_url_remains_final_positional_with_proxies(self):
+        # The "URL is last argv" security invariant from
+        # TestBuildDockerCommand must hold even with proxy flags.
+        import os
+
+        os.environ["HTTPS_PROXY"] = "http://p:1"
+        os.environ["HTTP_PROXY"] = "http://p:2"
+        os.environ["NO_PROXY"] = "x.y"
+        cmd = cli._build_docker_command("https://example.com/")
+        assert cmd[-1] == "https://example.com/"
+        assert cmd[-2] == cli.IMAGE_NAME
+
+    def test_empty_proxy_var_value_skipped(self):
+        # Empty string is not a real proxy config — treat as unset.
+        import os
+
+        os.environ["HTTPS_PROXY"] = ""
+        cmd = cli._build_docker_command("https://example.com/")
+        assert "HTTPS_PROXY=" not in cmd
+
+
 class TestCheckDocker:
     def test_returns_false_when_docker_binary_missing(self):
         with mock.patch.object(cli.shutil, "which", return_value=None):

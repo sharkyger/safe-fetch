@@ -21,6 +21,7 @@ deliberately if you intend to alter the contract.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -96,6 +97,28 @@ def _check_docker() -> bool:
     return result.returncode == 0
 
 
+# Proxy env vars that urllib (in the container) honors. Forwarded
+# verbatim — safe-fetch's job here is composition with proxy-based
+# tools like pipelock, not parsing the values. Order is stable so the
+# docker argv is deterministic for tests and audit.
+_PROXY_VARS: tuple[str, ...] = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")
+
+
+def _proxy_flags() -> list[str]:
+    """Return ``-e VAR=value`` pairs for any non-empty proxy env vars.
+
+    Empty-string values are treated as unset. The behavior matches
+    standard shell convention where an empty proxy env var is
+    equivalent to no proxy.
+    """
+    flags: list[str] = []
+    for var in _PROXY_VARS:
+        val = os.environ.get(var, "")
+        if val:
+            flags.extend(["-e", f"{var}={val}"])
+    return flags
+
+
 def _build_docker_command(url: str, image: str = IMAGE_NAME) -> list[str]:
     """Pure: assemble the locked-down docker-run argv for the given URL.
 
@@ -103,8 +126,13 @@ def _build_docker_command(url: str, image: str = IMAGE_NAME) -> list[str]:
     flags interpreted by docker itself; positioning the URL after the
     image makes accidental flag-injection impossible even if a future
     refactor mishandles validation.
+
+    ``HTTPS_PROXY`` / ``HTTP_PROXY`` / ``NO_PROXY`` are forwarded into
+    the container via ``-e`` flags (positioned before the image name)
+    so the in-container urllib honors them. When none are set the
+    argv is identical to v0.1.x.
     """
-    return ["docker", "run", *DOCKER_FLAGS, image, url]
+    return ["docker", "run", *DOCKER_FLAGS, *_proxy_flags(), image, url]
 
 
 # ── installer dispatch ──────────────────────────────────────────────
