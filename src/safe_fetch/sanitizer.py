@@ -54,7 +54,11 @@ class SanitizeResult:
 
 
 LENGTH_CAP_BYTES = 20_480  # 20 KB hard cap on sanitizer output
-MAX_BASE64_DECODE_LEN = 500
+# Max encoded length we will decode-and-scan for a base64 instruction
+# payload. Raised from 500 so multi-hundred-byte instruction blobs
+# (which encode well past the old ~700-byte effective window) are still
+# scanned. Decode + regex on a few KB is cheap relative to network I/O.
+MAX_BASE64_DECODE_LEN = 2048
 
 
 # ── unicode (mirrors src/sanitize/unicode.ts) ────────────────────────
@@ -103,6 +107,8 @@ _HIDDEN_SELECTORS = ", ".join(
         '[style*="display: none"]',
         '[style*="visibility:hidden"]',
         '[style*="visibility: hidden"]',
+        '[style*="visibility:collapse"]',
+        '[style*="visibility: collapse"]',
         '[style*="opacity:0"]',
         '[style*="opacity: 0"]',
         "[hidden]",
@@ -327,6 +333,15 @@ def _is_suspicious_url(url: str) -> bool:
             return True
         if _B64_VALUE_RE.match(value):
             return True
+    # Exfil can also ride in the path, not just the query string — e.g.
+    # https://evil/<base64-blob> or a path segment used as a data sink.
+    for segment in parsed.path.split("/"):
+        if not segment:
+            continue
+        if len(segment) > 100:
+            return True
+        if _B64_VALUE_RE.match(segment):
+            return True
     return False
 
 
@@ -360,12 +375,18 @@ _DELIMITER_PATTERNS = [
         r"<\|assistant\|>",
         r"<\|endoftext\|>",
         r"<\|pad\|>",
+        # Reserved chat-template tokens beyond the ChatML set above
+        # (Llama-3 header/turn markers, ChatML separator).
+        r"<\|eot_id\|>",
+        r"<\|start_header_id\|>",
+        r"<\|end_header_id\|>",
+        r"<\|im_sep\|>",
         r"\\?\[INST\\?\]",
         r"\\?\[\\?/INST\\?\]",
         r"<<SYS>>",
         r"<<\\?/SYS>>",
     )
-] + [re.compile(p) for p in (r"\n\nHuman:", r"\n\nAssistant:")]
+] + [re.compile(p) for p in (r"\n\nHuman:", r"\n\nAssistant:", r"\n\nSystem:")]
 
 
 def _strip_delimiters(text: str) -> tuple[str, dict[str, int]]:

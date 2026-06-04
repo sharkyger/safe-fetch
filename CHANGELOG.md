@@ -16,6 +16,18 @@ stable `v1.0`.
   interpolation, so a header value can never alter the surrounding
   envelope structure. Defense-in-depth; no user action required.
 
+### Changed
+
+- Broadened sanitizer defense-in-depth coverage: `visibility:collapse`
+  now joins the hidden-element selectors; the base64 instruction-scan
+  window was widened so multi-hundred-byte encoded payloads are
+  decoded and scanned; suspicious-URL detection now inspects the URL
+  path (not just the query string) for exfil-shaped segments; and the
+  LLM-delimiter set gained reserved chat-template tokens (Llama-3
+  header/turn markers, ChatML separator) and the `System:` turn
+  marker. New regression coverage in
+  `tests/test_sanitizer.py::TestDefenseInDepthGaps`.
+
 ## [0.2.0] - 2026-05-31
 
 ### Theme
