@@ -6,6 +6,16 @@ follows [SemVer](https://semver.org/), with the project-specific
 pre-stable rule that `v0.x.y` precedes the first reliably-tested
 stable `v1.0`.
 
+## [Unreleased]
+
+### Security
+
+- Hardened output-encoding of the untrusted-content envelope header.
+  Attacker-influenced values placed into the header are now
+  HTML-escaped and stripped of control characters before
+  interpolation, so a header value can never alter the surrounding
+  envelope structure. Defense-in-depth; no user action required.
+
 ## [0.2.0] - 2026-05-31
 
 ### Theme

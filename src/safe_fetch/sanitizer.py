@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import html
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -434,8 +435,29 @@ def looks_like_html(content: str, file_path: str | None = None) -> bool:
     return bool(_HTML_CONTENT_RE.match(content))
 
 
+# The URL is an attacker-influenced value, so it gets output-encoded
+# before interpolation into the envelope header (same hygiene as any
+# templated attribute). Line-breaking / control chars are dropped so the
+# header stays a single clean line: C0 (\x00-\x1f), DEL + C1
+# (\x7f-\x9f, includes NEL \x85), and the Unicode line/paragraph
+# separators (U+2028/U+2029).
+_URL_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def _sanitize_envelope_url(url: str) -> str:
+    """Output-encode a fetched URL before placing it in the envelope header.
+
+    Attacker-influenced values (the fetched URL included) are
+    html-escaped and stripped of control characters before
+    interpolation, so the value cannot alter the surrounding envelope
+    structure. Standard output-encoding hygiene; keep it in lock-step
+    with the wrap format in ``_wrap_untrusted``.
+    """
+    return html.escape(_URL_CONTROL_RE.sub("", url), quote=True)
+
+
 def _wrap_untrusted(content: str, url: str) -> str:
-    return f'<UNTRUSTED-WEB url="{url}">\n{content}\n</UNTRUSTED-WEB>'
+    return f'<UNTRUSTED-WEB url="{_sanitize_envelope_url(url)}">\n{content}\n</UNTRUSTED-WEB>'
 
 
 def _apply_length_cap(content: str) -> str:
