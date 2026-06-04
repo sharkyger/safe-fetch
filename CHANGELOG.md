@@ -214,7 +214,7 @@ list. Goal: future contributors and downstream consumers don't ask
 
 ### Fixed
 
-- Removed maintainer-personal domain `augatho.com` from the default
+- Removed a maintainer-personal domain from the default
   Bash-hook allowlist. The domain was committed in the initial
   scaffold and shipped through v1.0.x; it leaks an OSS-irrelevant
   allowlist entry to every install. The companion WebFetch hook never
