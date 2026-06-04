@@ -137,6 +137,51 @@ class TestHtmlBreakout:
         assert result.stats["breakout_attempts"] >= 2
 
 
+class TestEnvelopeUrlEncoding:
+    """The fetched URL is an attacker-influenced value and is placed into
+    the ``<UNTRUSTED-WEB url="...">`` header. Like any templated
+    attribute, it must be output-encoded so the value cannot alter the
+    surrounding envelope structure (HTML metacharacters escaped, control
+    chars dropped). These guard ``_sanitize_envelope_url``.
+    """
+
+    def test_html_metacharacters_in_url_are_encoded(self):
+        result = sanitize_text("body", url='https://x/<a "b" c>')
+        assert "<a " not in result.content
+        assert '"b"' not in result.content
+        assert "&lt;a " in result.content
+
+    def test_envelope_stays_singular_for_adversarial_url(self):
+        # Whatever metacharacters the URL carries, the wrap stays exactly
+        # one open + one close — the header value cannot restructure it.
+        result = sanitize_text("body", url='https://x/a">b<c')
+        assert result.content.count("<UNTRUSTED-WEB") == 1
+        assert result.content.count(OUTER_CLOSE) == 1
+
+    def test_control_chars_in_url_are_stripped(self):
+        result = sanitize_text("body", url="https://x/\n\tfoo")
+        # Header is a single clean line: control chars gone, but the
+        # surrounding URL text is preserved (not corrupted/dropped).
+        header = result.content.split("\n", 1)[0]
+        assert header == '<UNTRUSTED-WEB url="https://x/foo">'
+
+    def test_c1_and_unicode_line_separators_are_stripped(self):
+        # NEL (U+0085, a C1 control) and U+2028/U+2029 must not survive
+        # into the header -- some consumers treat them as line breaks.
+        result = sanitize_text("body", url="https://x/a\x85b\u2028c\u2029d")
+        header = result.content.split("\n", 1)[0]
+        assert header == '<UNTRUSTED-WEB url="https://x/abcd">'
+
+    def test_html_pipeline_encodes_url(self):
+        result = sanitize("<html><body><p>hi</p></body></html>", url='https://e/"x>')
+        assert result.content.count("<UNTRUSTED-WEB") == 1
+        assert result.content.count(OUTER_CLOSE) == 1
+
+    def test_clean_url_is_preserved(self):
+        result = sanitize_text("body", url="https://example.com/page")
+        assert 'url="https://example.com/page"' in result.content
+
+
 class TestKerckhoffsCompliance:
     """Verify the defense holds even with the tag name fully public.
 

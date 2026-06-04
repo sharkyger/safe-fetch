@@ -6,6 +6,28 @@ follows [SemVer](https://semver.org/), with the project-specific
 pre-stable rule that `v0.x.y` precedes the first reliably-tested
 stable `v1.0`.
 
+## [0.2.1] - 2026-06-04
+
+### Security
+
+- Hardened output-encoding of the untrusted-content envelope header.
+  Attacker-influenced values placed into the header are now
+  HTML-escaped and stripped of control characters before
+  interpolation, so a header value can never alter the surrounding
+  envelope structure. Defense-in-depth; no user action required.
+
+### Changed
+
+- Broadened sanitizer defense-in-depth coverage: `visibility:collapse`
+  now joins the hidden-element selectors; the base64 instruction-scan
+  window was widened so multi-hundred-byte encoded payloads are
+  decoded and scanned; suspicious-URL detection now inspects the URL
+  path (not just the query string) for exfil-shaped segments; and the
+  LLM-delimiter set gained reserved chat-template tokens (Llama-3
+  header/turn markers, ChatML separator) and the `System:` turn
+  marker. New regression coverage in
+  `tests/test_sanitizer.py::TestDefenseInDepthGaps`.
+
 ## [0.2.0] - 2026-05-31
 
 ### Theme
@@ -204,7 +226,7 @@ list. Goal: future contributors and downstream consumers don't ask
 
 ### Fixed
 
-- Removed maintainer-personal domain `augatho.com` from the default
+- Removed a maintainer-personal domain from the default
   Bash-hook allowlist. The domain was committed in the initial
   scaffold and shipped through v1.0.x; it leaks an OSS-irrelevant
   allowlist entry to every install. The companion WebFetch hook never
