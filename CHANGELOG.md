@@ -6,7 +6,7 @@ follows [SemVer](https://semver.org/), with the project-specific
 pre-stable rule that `v0.x.y` precedes the first reliably-tested
 stable `v1.0`.
 
-## [Unreleased]
+## [0.2.1] - 2026-06-04
 
 ### Security
 
