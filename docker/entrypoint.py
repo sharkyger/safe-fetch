@@ -15,6 +15,7 @@ silently smuggle ``file://`` into the container.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import sys
 import urllib.error
@@ -47,6 +48,26 @@ def _validate(url: str) -> None:
         _die("URL has no host")
 
 
+def _host_is_loopback(netloc: str) -> bool:
+    """True if ``netloc``'s host is localhost or a loopback IP."""
+    host = netloc.rsplit("@", 1)[-1]  # strip any userinfo
+    # bracketed IPv6 (``[::1]:443``) vs ``host:port``
+    host = host[1:].split("]", 1)[0] if host.startswith("[") else host.split(":", 1)[0]
+    host = host.lower()
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _origin(url: str) -> tuple[str, str]:
+    """The (scheme, netloc) origin used to decide if a redirect is cross-origin."""
+    p = urlparse(url)
+    return (p.scheme, p.netloc)
+
+
 class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Re-runs ``_validate`` on every redirect target.
 
@@ -64,7 +85,17 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
             _validate(newurl)
         except SystemExit:
             raise urllib.error.HTTPError(newurl, 403, "redirect to disallowed URL", headers, fp) from None
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        # urllib copies request headers onto the redirected Request. Never
+        # resend the search credential to a different origin — a redirect to
+        # another host/scheme could otherwise exfiltrate it.
+        if new is not None and _origin(req.full_url) != _origin(newurl):
+            extra = _search_header()
+            if extra is not None:
+                # ``add_header`` stores keys capitalized; ``remove_header`` does
+                # not re-capitalize, so match the stored form explicitly.
+                new.remove_header(extra[0].capitalize())
+        return new
 
 
 def _search_header() -> tuple[str, str] | None:
@@ -105,6 +136,14 @@ def _fetch(url: str) -> bytes:
     headers = {"User-Agent": USER_AGENT}
     extra = _search_header()
     if extra is not None:
+        # A credential must not travel in cleartext: require https unless the
+        # target is loopback (self-hosted local search over http is fine).
+        p = urlparse(url)
+        if p.scheme != "https" and not _host_is_loopback(p.netloc):
+            _die(
+                f"{SEARCH_HEADER_ENV} requires an https:// URL (loopback hosts excepted); "
+                "refusing to send a credential in cleartext"
+            )
         headers[extra[0]] = extra[1]
     req = urllib.request.Request(url, headers=headers)  # noqa: S310
     try:

@@ -27,10 +27,16 @@ stable `v1.0`.
   (never interpolated into the URL), so a provider key never reaches the
   result envelope. Control characters in a forwarded header are stripped
   at the container boundary to prevent header injection.
+- Credential hygiene for the auth header: it is refused over cleartext
+  `http` (loopback hosts excepted), stripped on cross-origin redirects so
+  it is never resent to another host, and a malformed header value fails
+  loudly rather than sending the request unauthenticated. The URL template
+  is host-pinned — the `{query}` placeholder may appear only in the path
+  or query string, never the host or fragment.
 
 ### Verification
 
-- 229 pytest tests pass (3.10/3.11/3.12). New coverage: `tests/test_search.py`,
+- 241 pytest tests pass (3.10/3.11/3.12). New coverage: `tests/test_search.py`,
   `tests/test_search_cli.py`, `tests/test_search_setup.py`, plus
   search-auth-header cases in `tests/test_docker_entrypoint.py`,
   including an envelope-breakout regression on the query→URL boundary.

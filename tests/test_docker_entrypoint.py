@@ -250,3 +250,90 @@ class TestFetchSendsSearchHeader:
         with mock.patch.dict("os.environ", env, clear=True):
             req = self._run_fetch()
         assert req.get_header("Authorization") is None
+
+
+# ── credential-handling hardening (cleartext + redirects) ─────────────
+
+
+class TestLoopbackDetection:
+    def test_localhost(self):
+        assert entrypoint._host_is_loopback("localhost:8080") is True
+
+    def test_127(self):
+        assert entrypoint._host_is_loopback("127.0.0.1") is True
+
+    def test_ipv6_loopback(self):
+        assert entrypoint._host_is_loopback("[::1]:443") is True
+
+    def test_remote_host(self):
+        assert entrypoint._host_is_loopback("api.example.com") is False
+
+    def test_public_ip(self):
+        assert entrypoint._host_is_loopback("8.8.8.8") is False
+
+
+class TestCleartextCredentialGuard:
+    """An auth header must not travel over plaintext http (loopback excepted)."""
+
+    def _fetch_capture(self, url):
+        with (
+            mock.patch.object(entrypoint.urllib.request, "build_opener") as build,
+            mock.patch.object(entrypoint.urllib.request, "urlopen"),
+        ):
+            opener = mock.MagicMock()
+            opener.open.return_value.__enter__.return_value.read.return_value = b"<html></html>"
+            build.return_value = opener
+            entrypoint._fetch(url)
+            return opener.open.call_args.args[0]
+
+    def _auth_env(self):
+        return mock.patch.dict("os.environ", {"SAFE_FETCH_SEARCH_HEADER": "Authorization: Bearer t"}, clear=False)
+
+    def test_http_remote_with_auth_dies(self):
+        with self._auth_env(), pytest.raises(SystemExit) as e:
+            entrypoint._fetch("http://api.example.com/s")
+        assert e.value.code == 2
+
+    def test_http_localhost_with_auth_allowed(self):
+        with self._auth_env():
+            req = self._fetch_capture("http://localhost:8888/s")
+        assert req.get_header("Authorization") == "Bearer t"
+
+    def test_https_remote_with_auth_allowed(self):
+        with self._auth_env():
+            req = self._fetch_capture("https://api.example.com/s")
+        assert req.get_header("Authorization") == "Bearer t"
+
+    def test_http_remote_without_auth_ok(self):
+        env = {k: v for k, v in __import__("os").environ.items() if k != "SAFE_FETCH_SEARCH_HEADER"}
+        with mock.patch.dict("os.environ", env, clear=True):
+            req = self._fetch_capture("http://api.example.com/s")
+        assert req.get_header("Authorization") is None
+
+
+class TestRedirectStripsCredential:
+    """The search credential must not be resent to a different origin on 30x."""
+
+    def _redirect(self, orig, newurl):
+        h = entrypoint._ValidatingRedirectHandler()
+        req = urllib.request.Request(orig, headers={"X-Subscription-Token": "secret"})  # noqa: S310
+        return h.redirect_request(req, mock.MagicMock(), 302, "Found", mock.MagicMock(), newurl)
+
+    def _auth_env(self):
+        return mock.patch.dict("os.environ", {"SAFE_FETCH_SEARCH_HEADER": "X-Subscription-Token: secret"}, clear=False)
+
+    def test_cross_origin_strips_auth(self):
+        with self._auth_env():
+            new = self._redirect("https://api.example.com/s", "https://evil.example.com/")
+        assert new is not None
+        assert new.get_header("X-subscription-token") is None
+
+    def test_same_origin_keeps_auth(self):
+        with self._auth_env():
+            new = self._redirect("https://api.example.com/s", "https://api.example.com/s2")
+        assert new.get_header("X-subscription-token") == "secret"
+
+    def test_scheme_downgrade_strips_auth(self):
+        with self._auth_env():
+            new = self._redirect("https://api.example.com/s", "http://api.example.com/s")
+        assert new.get_header("X-subscription-token") is None
