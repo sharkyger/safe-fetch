@@ -77,6 +77,14 @@ class TestTemplateError:
         err = search.template_error("https://x.example/s?q={query}\nEvil: 1")
         assert err is not None and "control" in err.lower()
 
+    def test_placeholder_in_fragment_rejected(self):
+        # A fragment never reaches the server, so the query would be lost.
+        err = search.template_error("https://api.example.com/#q={query}")
+        assert err is not None and "fragment" in err.lower()
+
+    def test_placeholder_in_query_with_fragment_present_ok(self):
+        assert search.template_error("https://api.example.com/s?q={query}#sec") is None
+
 
 # ── query validation ─────────────────────────────────────────────────
 
@@ -200,6 +208,20 @@ class TestLoadConfig:
         cfg.write_text("{ not json ")
         monkeypatch.setattr(search, "config_path", lambda: cfg)
         with _clear_env(), pytest.raises(search.SearchConfigError):
+            search.load_config()
+
+    def test_non_string_url_template_raises(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "search.json"
+        cfg.write_text(json.dumps({"url_template": 123}))
+        monkeypatch.setattr(search, "config_path", lambda: cfg)
+        with _clear_env(), pytest.raises(search.SearchConfigError, match="must be a string"):
+            search.load_config()
+
+    def test_non_string_auth_header_raises(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "search.json"
+        cfg.write_text(json.dumps({"url_template": "https://x.example/s?q={query}", "auth_header": 5}))
+        monkeypatch.setattr(search, "config_path", lambda: cfg)
+        with _clear_env(), pytest.raises(search.SearchConfigError, match="must be a string"):
             search.load_config()
 
     def test_non_dict_json_raises_object_error(self, tmp_path, monkeypatch):

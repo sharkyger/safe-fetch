@@ -30,7 +30,7 @@ stable `v1.0`.
 
 ### Verification
 
-- 222 pytest tests pass (3.10/3.11/3.12). New coverage: `tests/test_search.py`,
+- 227 pytest tests pass (3.10/3.11/3.12). New coverage: `tests/test_search.py`,
   `tests/test_search_cli.py`, `tests/test_search_setup.py`, plus
   search-auth-header cases in `tests/test_docker_entrypoint.py`,
   including an envelope-breakout regression on the query→URL boundary.

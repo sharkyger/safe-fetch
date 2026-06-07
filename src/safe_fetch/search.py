@@ -103,12 +103,18 @@ def load_config() -> SearchConfig | None:
         raise SearchConfigError(f"could not read search config at {path}: {e}") from e
     if not isinstance(data, dict):
         raise SearchConfigError(f"search config at {path} must be a JSON object")
-    if not data.get("url_template"):
+    url_template = data.get("url_template")
+    if not url_template:
         raise SearchConfigError(f"search config at {path} is missing 'url_template'")
+    if not isinstance(url_template, str):
+        raise SearchConfigError(f"search config at {path}: 'url_template' must be a string")
+    file_auth = data.get("auth_header")
+    if file_auth is not None and not isinstance(file_auth, str):
+        raise SearchConfigError(f"search config at {path}: 'auth_header' must be a string")
     # An env header supplements a file-configured URL, so a user can keep
     # the URL in the file and the secret out of it (in the environment).
-    auth = env_header or data.get("auth_header") or None
-    return SearchConfig(url_template=str(data["url_template"]), auth_header=auth)
+    auth = env_header or file_auth or None
+    return SearchConfig(url_template=url_template, auth_header=auth)
 
 
 def save_config(config: SearchConfig, *, dry_run: bool = False) -> SaveResult:
@@ -166,6 +172,10 @@ def template_error(template: str) -> str | None:
         return f"unsupported scheme {parsed.scheme!r}; only http/https allowed"
     if QUERY_PLACEHOLDER in parsed.scheme or QUERY_PLACEHOLDER in parsed.netloc:
         return f"the {QUERY_PLACEHOLDER} placeholder must be in the path or query string, not the host"
+    if QUERY_PLACEHOLDER in parsed.fragment:
+        # A fragment (#...) never leaves the client, so the query would
+        # never reach the backend — every search would send no query.
+        return f"the {QUERY_PLACEHOLDER} placeholder must be in the path or query string, not the URL fragment"
     if not parsed.netloc:
         return "search URL template has no host"
     return None

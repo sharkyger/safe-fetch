@@ -191,9 +191,17 @@ class TestSearchHeaderParsing:
         with self._env("   "):
             assert entrypoint._search_header() is None
 
-    def test_no_colon_returns_none(self):
-        with self._env("not a header"):
-            assert entrypoint._search_header() is None
+    def test_no_colon_dies_loud(self):
+        # A non-blank but unparseable header is a misconfig — fail loud,
+        # don't silently send the request unauthenticated.
+        with self._env("not a header"), pytest.raises(SystemExit) as e:
+            entrypoint._search_header()
+        assert e.value.code == 2
+
+    def test_empty_name_dies_loud(self):
+        with self._env(": secret-only-no-name"), pytest.raises(SystemExit) as e:
+            entrypoint._search_header()
+        assert e.value.code == 2
 
     def test_parsed_and_stripped(self):
         with self._env("  X-Subscription-Token :  secret-value "):

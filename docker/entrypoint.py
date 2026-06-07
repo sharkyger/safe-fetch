@@ -78,7 +78,7 @@ def _search_header() -> tuple[str, str] | None:
     """
     raw = os.environ.get(SEARCH_HEADER_ENV, "")
     if not raw.strip():
-        return None
+        return None  # no auth configured — proceed without a header
     # A header is a single line: keep only the first line (``splitlines``
     # covers CR, LF, CRLF and the exotic Unicode/C1 separators) so any
     # injected trailing lines are dropped entirely, then strip remaining
@@ -86,12 +86,13 @@ def _search_header() -> tuple[str, str] | None:
     lines = raw.splitlines()
     line = lines[0] if lines else ""
     cleaned = "".join(c for c in line if not (ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F))
-    if ":" not in cleaned:
-        return None
-    name, value = cleaned.split(":", 1)
+    name, sep, value = cleaned.partition(":")
     name, value = name.strip(), value.strip()
-    if not name:
-        return None
+    # A non-blank value that doesn't parse as "Name: value" is a
+    # misconfiguration — fail loud rather than silently dropping the auth
+    # header and sending the request unauthenticated.
+    if not sep or not name:
+        _die(f"malformed {SEARCH_HEADER_ENV}: expected 'Name: value'")
     return name, value
 
 
