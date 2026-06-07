@@ -90,7 +90,10 @@ def load_config() -> SearchConfig | None:
     unreadable / not JSON / missing ``url_template``.
     """
     env_url = os.environ.get(ENV_URL, "").strip()
-    env_header = os.environ.get(ENV_HEADER, "").strip()
+    raw_env_header = os.environ.get(ENV_HEADER)
+    env_header = raw_env_header.strip() if raw_env_header is not None else ""
+    header_set = raw_env_header is not None
+
     if env_url:
         return SearchConfig(url_template=env_url, auth_header=env_header or None)
 
@@ -111,9 +114,11 @@ def load_config() -> SearchConfig | None:
     file_auth = data.get("auth_header")
     if file_auth is not None and not isinstance(file_auth, str):
         raise SearchConfigError(f"search config at {path}: 'auth_header' must be a string")
-    # An env header supplements a file-configured URL, so a user can keep
-    # the URL in the file and the secret out of it (in the environment).
-    auth = env_header or file_auth or None
+    # A set env header overrides the file — even when blank: an explicit
+    # SAFE_FETCH_SEARCH_HEADER="" disables the stored header. When the var is
+    # unset, the file value is used, so a user can keep the URL in the file
+    # and supply the secret via the environment.
+    auth = (env_header or None) if header_set else (file_auth or None)
     return SearchConfig(url_template=url_template, auth_header=auth)
 
 

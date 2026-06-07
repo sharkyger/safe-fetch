@@ -32,7 +32,10 @@ from safe_fetch import search  # noqa: E402
 
 
 def _clear_env():
-    return mock.patch.dict(os.environ, {search.ENV_URL: "", search.ENV_HEADER: ""}, clear=False)
+    # Truly UNSET the two vars (not set-to-blank): a blank env header is a
+    # meaningful explicit override, distinct from unset.
+    keep = {k: v for k, v in os.environ.items() if k not in (search.ENV_URL, search.ENV_HEADER)}
+    return mock.patch.dict(os.environ, keep, clear=True)
 
 
 # ── template validation ──────────────────────────────────────────────
@@ -194,6 +197,26 @@ class TestLoadConfig:
         loaded = search.load_config()
         assert loaded.url_template == "https://file.example/s?q={query}"
         assert loaded.auth_header == "Authorization: Bearer env-secret"
+
+    def test_blank_env_header_disables_file_header(self, tmp_path, monkeypatch):
+        # SAFE_FETCH_SEARCH_HEADER="" (set but empty) explicitly disables the
+        # stored header — distinct from unset, which falls back to the file.
+        cfg = tmp_path / "search.json"
+        cfg.write_text(json.dumps({"url_template": "https://file.example/s?q={query}", "auth_header": "X-Old: stale"}))
+        monkeypatch.setattr(search, "config_path", lambda: cfg)
+        monkeypatch.delenv(search.ENV_URL, raising=False)
+        monkeypatch.setenv(search.ENV_HEADER, "")
+        loaded = search.load_config()
+        assert loaded.url_template == "https://file.example/s?q={query}"
+        assert loaded.auth_header is None
+
+    def test_unset_env_header_falls_back_to_file(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "search.json"
+        cfg.write_text(json.dumps({"url_template": "https://file.example/s?q={query}", "auth_header": "X-Keep: v"}))
+        monkeypatch.setattr(search, "config_path", lambda: cfg)
+        monkeypatch.delenv(search.ENV_URL, raising=False)
+        monkeypatch.delenv(search.ENV_HEADER, raising=False)
+        assert search.load_config().auth_header == "X-Keep: v"
 
     def test_env_header_overrides_file_header(self, tmp_path, monkeypatch):
         cfg = tmp_path / "search.json"

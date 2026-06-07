@@ -70,11 +70,12 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
 def _search_header() -> tuple[str, str] | None:
     """Parse the optional search auth header from the environment.
 
-    Returns ``(name, value)`` or ``None``. Defensive: a blank or
-    colon-less value is ignored, and all control characters (notably
-    CR/LF) are stripped so a crafted value cannot inject additional
-    request headers. The value is never logged — it only feeds the
-    request below.
+    Returns ``(name, value)``, or ``None`` when the variable is blank/unset
+    (no auth header). A non-blank but malformed value (no ``:`` or an empty
+    name) exits via ``_die`` rather than silently degrading to no-auth —
+    fail-closed. All control characters (notably CR/LF) are stripped so a
+    crafted value cannot inject additional request headers; the value is
+    never logged — it only feeds the request below.
     """
     raw = os.environ.get(SEARCH_HEADER_ENV, "")
     if not raw.strip():
