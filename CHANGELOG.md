@@ -32,7 +32,7 @@ stable `v1.0`.
   it is never resent to another host, and a malformed header value fails
   loudly rather than sending the request unauthenticated. The URL template
   is host-pinned — the `{query}` placeholder may appear only in the path
-  or query string, never the host or fragment.
+  or query string, never in the scheme, host, port, or fragment.
 
 ### Verification
 
