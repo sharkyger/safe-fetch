@@ -15,6 +15,8 @@ silently smuggle ``file://`` into the container.
 
 from __future__ import annotations
 
+import ipaddress
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -25,7 +27,12 @@ from sanitizer import sanitize
 
 FETCH_TIMEOUT_SECONDS = 15
 MAX_FETCH_BYTES = 5 * 1024 * 1024  # 5 MB raw cap before sanitizer truncates to 20 KB
-USER_AGENT = "safe-fetch/0.2.1 (+https://github.com/sharkyger/safe-fetch)"
+USER_AGENT = "safe-fetch/0.3.0 (+https://github.com/sharkyger/safe-fetch)"
+
+# Optional search-provider auth header, forwarded by the host as an env
+# var (host-side ``cli._search_header_flags``). Only consulted for the
+# search flow; a plain fetch never sets it.
+SEARCH_HEADER_ENV = "SAFE_FETCH_SEARCH_HEADER"
 
 
 def _die(msg: str, code: int = 2) -> NoReturn:
@@ -39,6 +46,26 @@ def _validate(url: str) -> None:
         _die(f"unsupported scheme {p.scheme!r}; only http/https allowed")
     if not p.netloc:
         _die("URL has no host")
+
+
+def _host_is_loopback(netloc: str) -> bool:
+    """True if ``netloc``'s host is localhost or a loopback IP."""
+    host = netloc.rsplit("@", 1)[-1]  # strip any userinfo
+    # bracketed IPv6 (``[::1]:443``) vs ``host:port``
+    host = host[1:].split("]", 1)[0] if host.startswith("[") else host.split(":", 1)[0]
+    host = host.lower()
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _origin(url: str) -> tuple[str, str]:
+    """The (scheme, netloc) origin used to decide if a redirect is cross-origin."""
+    p = urlparse(url)
+    return (p.scheme, p.netloc)
 
 
 class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -58,7 +85,47 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
             _validate(newurl)
         except SystemExit:
             raise urllib.error.HTTPError(newurl, 403, "redirect to disallowed URL", headers, fp) from None
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        # urllib copies request headers onto the redirected Request. Never
+        # resend the search credential to a different origin — a redirect to
+        # another host/scheme could otherwise exfiltrate it.
+        if new is not None and _origin(req.full_url) != _origin(newurl):
+            extra = _search_header()
+            if extra is not None:
+                # ``add_header`` stores keys capitalized; ``remove_header`` does
+                # not re-capitalize, so match the stored form explicitly.
+                new.remove_header(extra[0].capitalize())
+        return new
+
+
+def _search_header() -> tuple[str, str] | None:
+    """Parse the optional search auth header from the environment.
+
+    Returns ``(name, value)``, or ``None`` when the variable is blank/unset
+    (no auth header). A non-blank but malformed value (no ``:`` or an empty
+    name) exits via ``_die`` rather than silently degrading to no-auth —
+    fail-closed. All control characters (notably CR/LF) are stripped so a
+    crafted value cannot inject additional request headers; the value is
+    never logged — it only feeds the request below.
+    """
+    raw = os.environ.get(SEARCH_HEADER_ENV, "")
+    if not raw.strip():
+        return None  # no auth configured — proceed without a header
+    # A header is a single line: keep only the first line (``splitlines``
+    # covers CR, LF, CRLF and the exotic Unicode/C1 separators) so any
+    # injected trailing lines are dropped entirely, then strip remaining
+    # control chars (C0, DEL, C1) from what's left.
+    lines = raw.splitlines()
+    line = lines[0] if lines else ""
+    cleaned = "".join(c for c in line if not (ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F))
+    name, sep, value = cleaned.partition(":")
+    name, value = name.strip(), value.strip()
+    # A non-blank value that doesn't parse as "Name: value" is a
+    # misconfiguration — fail loud rather than silently dropping the auth
+    # header and sending the request unauthenticated.
+    if not sep or not name:
+        _die(f"malformed {SEARCH_HEADER_ENV}: expected 'Name: value'")
+    return name, value
 
 
 def _fetch(url: str) -> bytes:
@@ -66,7 +133,19 @@ def _fetch(url: str) -> bytes:
     # below would otherwise warrant S310. The noqa is the documented
     # mitigation, not silent suppression.
     opener = urllib.request.build_opener(_ValidatingRedirectHandler())
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310
+    headers = {"User-Agent": USER_AGENT}
+    extra = _search_header()
+    if extra is not None:
+        # A credential must not travel in cleartext: require https unless the
+        # target is loopback (self-hosted local search over http is fine).
+        p = urlparse(url)
+        if p.scheme != "https" and not _host_is_loopback(p.netloc):
+            _die(
+                f"{SEARCH_HEADER_ENV} requires an https:// URL (loopback hosts excepted); "
+                "refusing to send a credential in cleartext"
+            )
+        headers[extra[0]] = extra[1]
+    req = urllib.request.Request(url, headers=headers)  # noqa: S310
     try:
         with opener.open(req, timeout=FETCH_TIMEOUT_SECONDS) as r:  # noqa: S310
             return r.read(MAX_FETCH_BYTES + 1)
