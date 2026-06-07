@@ -139,6 +139,53 @@ Or use the explicit Bash form:
 Naming the tool guarantees the request flows through the container
 isolation + sanitizer chain.
 
+### Searching the web
+
+`safe-fetch search "<query>"` runs a web search and returns the results
+wrapped in the same untrusted-content envelope as a fetched page —
+search results are untrusted data, treated exactly like any other
+fetched content.
+
+safe-fetch **ships with no search backend configured**, and bundles no
+default provider or allowlist — the choice of search engine is yours.
+Until you configure one, `search` fails closed:
+
+```bash
+$ safe-fetch search "rust async runtime"
+safe-fetch: no search backend configured. Run `safe-fetch search --setup` to set one up.
+```
+
+Configure one with the one-time setup wizard:
+
+```bash
+safe-fetch search --setup
+```
+
+It asks for a **URL template** (put `{query}` where the search words go)
+and, optionally, an **auth header** for providers that need a key. The
+key is stored locally with owner-only permissions and sent as a request
+header *inside the container* — it is never placed in the URL, so it
+never appears in the result envelope. Prefer header auth over a key in
+the URL for that reason.
+
+Any provider that returns results from a URL works. For example:
+
+```text
+URL template:  https://your-search-host.example/search?q={query}&format=json
+Auth header:   X-Subscription-Token: <your-key>      (or: Authorization: Bearer <your-key>)
+```
+
+Once configured:
+
+```bash
+safe-fetch search "rust async runtime"
+```
+
+The config lives at `~/.config/safe-fetch/search.json` (honoring
+`XDG_CONFIG_HOME`). Power users can skip the wizard and set
+`SAFE_FETCH_SEARCH_URL` (and optionally `SAFE_FETCH_SEARCH_HEADER`)
+in the environment instead — those take precedence over the file.
+
 ## Quick start
 
 ```bash

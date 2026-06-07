@@ -6,6 +6,35 @@ follows [SemVer](https://semver.org/), with the project-specific
 pre-stable rule that `v0.x.y` precedes the first reliably-tested
 stable `v1.0`.
 
+## [0.3.0] - 2026-06-07
+
+### Added
+
+- Web-search support. `safe-fetch search "<query>"` runs a web search
+  and returns the results wrapped in the same `<UNTRUSTED-WEB>` envelope
+  as a fetched page — search results are untrusted data, run through the
+  identical hardened-container fetch + Layer-2 sanitizer path. safe-fetch
+  bundles no search provider and no allowlist: the command ships empty
+  and fails closed until the user configures a backend.
+- `safe-fetch search --setup`, a one-time interactive wizard that
+  collects a URL template (with a `{query}` placeholder) and an optional
+  auth header, writes `~/.config/safe-fetch/search.json` with owner-only
+  (0600) permissions, and can run a verification search. Power users can
+  set `SAFE_FETCH_SEARCH_URL` / `SAFE_FETCH_SEARCH_HEADER` in the
+  environment instead (these take precedence over the file).
+- The query is percent-encoded before substitution into the template,
+  and the optional auth header is sent as an in-container request header
+  (never interpolated into the URL), so a provider key never reaches the
+  result envelope. Control characters in a forwarded header are stripped
+  at the container boundary to prevent header injection.
+
+### Verification
+
+- 222 pytest tests pass (3.10/3.11/3.12). New coverage: `tests/test_search.py`,
+  `tests/test_search_cli.py`, `tests/test_search_setup.py`, plus
+  search-auth-header cases in `tests/test_docker_entrypoint.py`,
+  including an envelope-breakout regression on the query→URL boundary.
+
 ## [0.2.1] - 2026-06-04
 
 ### Security

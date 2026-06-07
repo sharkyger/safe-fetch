@@ -164,3 +164,81 @@ class TestFetchUsesValidatingHandler:
         assert any(isinstance(h, entrypoint._ValidatingRedirectHandler) for h in installed), (
             f"expected a _ValidatingRedirectHandler in build_opener args, got {installed!r}"
         )
+
+
+# ── optional search auth header ───────────────────────────────────────
+
+
+class TestSearchHeaderParsing:
+    """``SAFE_FETCH_SEARCH_HEADER`` lets the host forward a search-provider
+    auth header into the container's fetch. It is parsed defensively:
+    blank/colon-less values are ignored, and control characters (CR/LF)
+    are stripped so a crafted value cannot inject extra request headers.
+    """
+
+    def _env(self, value):
+        return mock.patch.dict("os.environ", {"SAFE_FETCH_SEARCH_HEADER": value}, clear=False)
+
+    def _unset(self):
+        env = {k: v for k, v in __import__("os").environ.items() if k != "SAFE_FETCH_SEARCH_HEADER"}
+        return mock.patch.dict("os.environ", env, clear=True)
+
+    def test_unset_returns_none(self):
+        with self._unset():
+            assert entrypoint._search_header() is None
+
+    def test_blank_returns_none(self):
+        with self._env("   "):
+            assert entrypoint._search_header() is None
+
+    def test_no_colon_returns_none(self):
+        with self._env("not a header"):
+            assert entrypoint._search_header() is None
+
+    def test_parsed_and_stripped(self):
+        with self._env("  X-Subscription-Token :  secret-value "):
+            assert entrypoint._search_header() == ("X-Subscription-Token", "secret-value")
+
+    def test_crlf_stripped_no_header_injection(self):
+        with self._env("Authorization: Bearer t\r\nX-Injected: evil"):
+            name, value = entrypoint._search_header()
+            assert "\r" not in value and "\n" not in value
+            assert "X-Injected" not in value
+
+    def test_unicode_line_separator_truncates(self):
+        # splitlines() also breaks on U+2028 / NEL etc., so an injected
+        # trailing line via an exotic separator is dropped too.
+        with self._env("Authorization: Bearer t" + "\u2028" + "X-Injected: evil"):
+            _, value = entrypoint._search_header()
+            assert "X-Injected" not in value
+
+    def test_del_control_char_stripped(self):
+        # DEL (0x7f) is not a line separator but must be stripped from the value.
+        with self._env("X-Tok: ab\x7fcd"):
+            name, value = entrypoint._search_header()
+            assert name == "X-Tok"
+            assert value == "abcd"
+
+
+class TestFetchSendsSearchHeader:
+    def _run_fetch(self):
+        with (
+            mock.patch.object(entrypoint.urllib.request, "build_opener") as build,
+            mock.patch.object(entrypoint.urllib.request, "urlopen"),
+        ):
+            opener = mock.MagicMock()
+            opener.open.return_value.__enter__.return_value.read.return_value = b"<html></html>"
+            build.return_value = opener
+            entrypoint._fetch("https://example.com/")
+        return opener.open.call_args.args[0]
+
+    def test_header_added_to_request_when_set(self):
+        with mock.patch.dict("os.environ", {"SAFE_FETCH_SEARCH_HEADER": "Authorization: Bearer t"}, clear=False):
+            req = self._run_fetch()
+        assert req.get_header("Authorization") == "Bearer t"
+
+    def test_no_header_when_unset(self):
+        env = {k: v for k, v in __import__("os").environ.items() if k != "SAFE_FETCH_SEARCH_HEADER"}
+        with mock.patch.dict("os.environ", env, clear=True):
+            req = self._run_fetch()
+        assert req.get_header("Authorization") is None

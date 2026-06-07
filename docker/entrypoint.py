@@ -15,6 +15,7 @@ silently smuggle ``file://`` into the container.
 
 from __future__ import annotations
 
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -25,7 +26,12 @@ from sanitizer import sanitize
 
 FETCH_TIMEOUT_SECONDS = 15
 MAX_FETCH_BYTES = 5 * 1024 * 1024  # 5 MB raw cap before sanitizer truncates to 20 KB
-USER_AGENT = "safe-fetch/0.2.1 (+https://github.com/sharkyger/safe-fetch)"
+USER_AGENT = "safe-fetch/0.3.0 (+https://github.com/sharkyger/safe-fetch)"
+
+# Optional search-provider auth header, forwarded by the host as an env
+# var (host-side ``cli._search_header_flags``). Only consulted for the
+# search flow; a plain fetch never sets it.
+SEARCH_HEADER_ENV = "SAFE_FETCH_SEARCH_HEADER"
 
 
 def _die(msg: str, code: int = 2) -> NoReturn:
@@ -61,12 +67,44 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def _search_header() -> tuple[str, str] | None:
+    """Parse the optional search auth header from the environment.
+
+    Returns ``(name, value)`` or ``None``. Defensive: a blank or
+    colon-less value is ignored, and all control characters (notably
+    CR/LF) are stripped so a crafted value cannot inject additional
+    request headers. The value is never logged — it only feeds the
+    request below.
+    """
+    raw = os.environ.get(SEARCH_HEADER_ENV, "")
+    if not raw.strip():
+        return None
+    # A header is a single line: keep only the first line (``splitlines``
+    # covers CR, LF, CRLF and the exotic Unicode/C1 separators) so any
+    # injected trailing lines are dropped entirely, then strip remaining
+    # control chars (C0, DEL, C1) from what's left.
+    lines = raw.splitlines()
+    line = lines[0] if lines else ""
+    cleaned = "".join(c for c in line if not (ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F))
+    if ":" not in cleaned:
+        return None
+    name, value = cleaned.split(":", 1)
+    name, value = name.strip(), value.strip()
+    if not name:
+        return None
+    return name, value
+
+
 def _fetch(url: str) -> bytes:
     # Scheme is validated up-front in _validate(); the urllib calls
     # below would otherwise warrant S310. The noqa is the documented
     # mitigation, not silent suppression.
     opener = urllib.request.build_opener(_ValidatingRedirectHandler())
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310
+    headers = {"User-Agent": USER_AGENT}
+    extra = _search_header()
+    if extra is not None:
+        headers[extra[0]] = extra[1]
+    req = urllib.request.Request(url, headers=headers)  # noqa: S310
     try:
         with opener.open(req, timeout=FETCH_TIMEOUT_SECONDS) as r:  # noqa: S310
             return r.read(MAX_FETCH_BYTES + 1)

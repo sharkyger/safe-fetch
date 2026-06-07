@@ -29,6 +29,17 @@ The end-to-end flow:
 The four layers are independent — a bypass at one is caught by the
 next.
 
+`safe-fetch search "<query>"` is the same pipeline reached by a
+different door: the user-configured search template turns the query
+into a URL, which then runs through the identical container fetch +
+sanitizer + envelope path. Search results are untrusted data, wrapped
+exactly like a fetched page. safe-fetch bundles no search provider and
+no allowlist — the backend is the user's choice, configured locally,
+and `search` fails closed until one is set. An optional provider key
+is sent as an in-container request header, never placed in the URL; it
+is auth to the user's chosen search backend, not session handling of a
+fetched site (which remains out of scope). HTTP only — no new protocol.
+
 Companion repo `mcp-safe-fetch` (planned, separate codebase) applies
 the same wrap-tag pattern to MCP server responses with
 `<UNTRUSTED-MCP>` tags.
