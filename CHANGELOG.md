@@ -6,6 +6,16 @@ follows [SemVer](https://semver.org/), with the project-specific
 pre-stable rule that `v0.x.y` precedes the first reliably-tested
 stable `v1.0`.
 
+## [Unreleased]
+
+### Changed
+
+- Bumped `beautifulsoup4` from 4.14.3 to 4.15.0, with the
+  `docker/Dockerfile` pin updated in lockstep per the exact-pin
+  contract (CVE-clean, past the freshness hold).
+- Bumped SHA-pinned GitHub Actions: `actions/checkout` v6.0.2 → v6.0.3
+  and `github/codeql-action` v4.36.0 → v4.36.2.
+
 ## [0.3.0] - 2026-06-07
 
 ### Added

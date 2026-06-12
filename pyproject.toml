@@ -33,7 +33,7 @@ dependencies = [
     # Dependabot tracks bumps; manual PRs update Dockerfile in lockstep.
     #
     # lxml 6.1.1 closes PYSEC-2026-87 (fix landed in 6.1.0); 5.x has no
-    # back-port. bs4 4.14.3 is latest stable + past freshness hold.
+    # back-port. bs4 4.15.0 is latest stable + past freshness hold.
     "beautifulsoup4==4.15.0",
     "lxml==6.1.1",
 ]
