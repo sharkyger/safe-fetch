@@ -175,6 +175,19 @@ URL template:  https://your-search-host.example/search?q={query}&format=json
 Auth header:   X-Subscription-Token: <your-key>      (or: Authorization: Bearer <your-key>)
 ```
 
+A concrete one — [Brave Search](https://brave.com/search/api/) (free
+"Data for Search" tier: 2,000 queries/month; key from
+<https://api-dashboard.search.brave.com>):
+
+```text
+URL template:  https://api.search.brave.com/res/v1/web/search?q={query}
+Auth header:   X-Subscription-Token: <your-brave-key>
+```
+
+Brave suits `search` well: it authenticates by header, so the key is
+sent as a request header inside the container and never appears in the
+result envelope — exactly the header-over-URL preference noted above.
+
 Once configured:
 
 ```bash

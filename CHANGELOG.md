@@ -8,6 +8,13 @@ stable `v1.0`.
 
 ## [Unreleased]
 
+### Documentation
+
+- Added a worked **Brave Search** example to the "Searching the web"
+  section of the README (URL template + `X-Subscription-Token` header,
+  key as a placeholder), noting that Brave's header auth keeps the key
+  out of the result envelope.
+
 ### Changed
 
 - Bumped `beautifulsoup4` from 4.14.3 to 4.15.0, with the
