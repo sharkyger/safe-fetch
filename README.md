@@ -175,8 +175,8 @@ URL template:  https://your-search-host.example/search?q={query}&format=json
 Auth header:   X-Subscription-Token: <your-key>      (or: Authorization: Bearer <your-key>)
 ```
 
-A concrete one — [Brave Search](https://brave.com/search/api/) (free
-"Data for Search" tier: 2,000 queries/month; key from
+A concrete one — [Brave Search](https://brave.com/search/api/) (has a
+free "Data for Search" tier — see the site for current limits; key from
 <https://api-dashboard.search.brave.com>):
 
 ```text
