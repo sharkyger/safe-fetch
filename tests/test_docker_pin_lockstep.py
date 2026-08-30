@@ -31,7 +31,6 @@ simply be removed. Hence: keep the pin, enforce it.
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -42,8 +41,12 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 # "name==version" inside single quotes on the Dockerfile's pip install line.
 _DOCKER_PIN = re.compile(r"'([A-Za-z0-9_.-]+)==([0-9][0-9A-Za-z.+-]*)'")
-# "name==version" as a pyproject dependency entry.
-_PYPROJECT_PIN = re.compile(r"^([A-Za-z0-9_.-]+)==([0-9][0-9A-Za-z.+-]*)$")
+# "name==version" inside the pyproject [project] dependencies list.
+# Parsed with a regex rather than tomllib on purpose: tomllib is 3.11+, this
+# repo's CI still tests 3.10, and a test that cannot run on a supported
+# interpreter is worse than one extra regex.
+_PYPROJECT_PIN = re.compile(r'"([A-Za-z0-9_.-]+)==([0-9][0-9A-Za-z.+-]*)"')
+_DEPS_BLOCK = re.compile(r"^dependencies\s*=\s*\[(.*?)^\]", re.M | re.S)
 
 
 def _dockerfile_pins() -> dict[str, str]:
@@ -51,13 +54,16 @@ def _dockerfile_pins() -> dict[str, str]:
 
 
 def _pyproject_pins() -> dict[str, str]:
-    data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-    pins: dict[str, str] = {}
-    for entry in data["project"]["dependencies"]:
-        m = _PYPROJECT_PIN.match(entry.strip())
-        if m:
-            pins[m.group(1).lower()] = m.group(2)
-    return pins
+    """Runtime pins from the [project] dependencies block only.
+
+    Scoped to that block so [project.optional-dependencies] (pytest, ruff,
+    mypy) never leaks in — those are dev tools and are deliberately absent
+    from the image.
+    """
+    block = _DEPS_BLOCK.search(PYPROJECT.read_text(encoding="utf-8"))
+    if block is None:
+        return {}
+    return {m.group(1).lower(): m.group(2) for m in _PYPROJECT_PIN.finditer(block.group(1))}
 
 
 def test_fixtures_are_actually_parsed():
