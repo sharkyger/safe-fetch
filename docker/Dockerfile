@@ -18,7 +18,10 @@ RUN apk add --no-cache libxml2 libxslt \
  # Exact-pin must stay in lockstep with pyproject.toml so the host
  # and in-container installs resolve to byte-identical parsed-tree
  # behavior. lxml 6.1.1 closes PYSEC-2026-87 (5.x has no back-port).
- && pip install --no-cache-dir 'beautifulsoup4==4.15.0' 'lxml==6.1.1' \
+ # ENFORCED by tests/test_docker_pin_lockstep.py — Dependabot bumps
+ # pyproject.toml and cannot reach this line, so the drift is silent
+ # without a test that fails on it.
+ && pip install --no-cache-dir 'beautifulsoup4==4.15.0' 'lxml==6.1.2' \
  && apk del .build-deps
 
 WORKDIR /app
