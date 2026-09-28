@@ -42,7 +42,7 @@ dependencies = [
     # what gets removed. It was an unpinned transitive of bs4 until now,
     # resolved separately on host and in image. Both are pure Python.
     "beautifulsoup4==4.15.0",
-    "soupsieve==2.9.2",
+    "soupsieve==2.10",
 ]
 
 [project.urls]
